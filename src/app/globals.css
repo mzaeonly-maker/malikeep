@@ -240,3 +240,82 @@ th {
     flex-direction: column;
   }
 }
+/* MALIKEEP MOBILE RESPONSIVE DESIGN */
+
+@media (max-width: 760px) {
+
+  .app-container {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-container > div {
+    flex-direction: column !important;
+    width: 100%;
+  }
+
+  .app-container > div > aside {
+    width: 100% !important;
+    padding: 12px !important;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+  }
+
+  .app-container > div > aside > p:first-child {
+    width: 100%;
+    margin-bottom: 5px !important;
+  }
+
+  .app-container > div > aside > div:not(:last-child) {
+    padding: 9px 11px !important;
+    margin: 0 !important;
+    font-size: 12px !important;
+  }
+
+  .app-container > div > aside > div:last-child {
+    display: none;
+  }
+
+  .app-container > div > section {
+    width: 100%;
+    min-width: 0;
+    padding: 20px 14px !important;
+  }
+
+  .page-title {
+    font-size: 22px;
+  }
+
+  .card {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .grid {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .grid-2,
+  .grid-3,
+  .grid-4 {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .app-container header {
+    padding: 14px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .app-container > div > aside > div:not(:last-child) {
+    padding: 8px !important;
+    font-size: 11px !important;
+  }
+
+  .app-container > div > section {
+    padding: 16px 10px !important;
+  }
+}

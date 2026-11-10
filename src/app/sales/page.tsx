@@ -10,7 +10,8 @@ import {
   RefreshCw,
   Wallet,
   Package,
-  CheckCircle2
+  CheckCircle2,
+  Users
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
@@ -21,6 +22,12 @@ type Product = {
   selling_price: number;
   buying_price: number;
   quantity: number;
+};
+
+type Customer = {
+  id: string;
+  customer_name: string;
+  phone: string | null;
 };
 
 type CartItem = {
@@ -52,12 +59,16 @@ export default function SalesPage() {
   const [businessId, setBusinessId] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const [selectedProduct, setSelectedProduct] = useState("");
   const [quantity, setQuantity] = useState("1");
+
+  const [selectedCustomer, setSelectedCustomer] = useState("");
   const [customerName, setCustomerName] = useState("");
+
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>("cash");
   const [amountPaid, setAmountPaid] = useState("");
@@ -95,21 +106,29 @@ export default function SalesPage() {
     setBusinessId(business.id);
     setBusinessName(business.business_name);
 
-    const [productResult, salesResult] = await Promise.all([
-      supabase
-        .from("products")
-        .select("id, product_name, unit, selling_price, buying_price, quantity")
-        .eq("business_id", business.id)
-        .eq("is_active", true)
-        .order("product_name"),
+    const [productResult, salesResult, customerResult] =
+      await Promise.all([
+        supabase
+          .from("products")
+          .select("id, product_name, unit, selling_price, buying_price, quantity")
+          .eq("business_id", business.id)
+          .eq("is_active", true)
+          .order("product_name"),
 
-      supabase
-        .from("sales")
-        .select("*")
-        .eq("business_id", business.id)
-        .order("created_at", { ascending: false })
-        .limit(10)
-    ]);
+        supabase
+          .from("sales")
+          .select("*")
+          .eq("business_id", business.id)
+          .order("created_at", { ascending: false })
+          .limit(10),
+
+        supabase
+          .from("customers")
+          .select("id, customer_name, phone")
+          .eq("business_id", business.id)
+          .eq("is_active", true)
+          .order("customer_name")
+      ]);
 
     if (productResult.error) {
       setError(productResult.error.message);
@@ -121,6 +140,12 @@ export default function SalesPage() {
       setError(salesResult.error.message);
     } else {
       setSales((salesResult.data || []) as Sale[]);
+    }
+
+    if (customerResult.error) {
+      setError(customerResult.error.message);
+    } else {
+      setCustomers((customerResult.data || []) as Customer[]);
     }
 
     setLoading(false);
@@ -156,6 +181,20 @@ export default function SalesPage() {
     : Number(amountPaid || 0);
 
   const balance = total - paid;
+
+  function handleCustomerChange(customerId: string) {
+    setSelectedCustomer(customerId);
+
+    if (customerId) {
+      const customer = customers.find(
+        (item) => item.id === customerId
+      );
+
+      setCustomerName(customer?.customer_name || "");
+    } else {
+      setCustomerName("");
+    }
+  }
 
   function addProduct() {
     setError("");
@@ -219,6 +258,7 @@ export default function SalesPage() {
     });
 
     setQuantity("1");
+    setSelectedProduct("");
   }
 
   function updateQuantity(productId: string, newQuantity: number) {
@@ -266,6 +306,13 @@ export default function SalesPage() {
       return;
     }
 
+    if (selectedCustomer && !customers.some(
+      (customer) => customer.id === selectedCustomer
+    )) {
+      setError("Please select a valid registered customer.");
+      return;
+    }
+
     if (paymentMethod !== "credit") {
       if (!Number.isFinite(paid) || paid < 0) {
         setError("Enter a valid payment amount.");
@@ -294,8 +341,11 @@ export default function SalesPage() {
           quantity: item.quantity
         })),
         p_payment_method: paymentMethod,
+        p_customer_id: selectedCustomer || null,
         p_amount_paid: paid,
-        p_customer_name: customerName.trim() || null,
+        p_customer_name: selectedCustomer
+          ? null
+          : customerName.trim() || null,
         p_notes: notes.trim() || null
       }
     );
@@ -311,6 +361,8 @@ export default function SalesPage() {
     );
 
     setCart([]);
+    setSelectedProduct("");
+    setSelectedCustomer("");
     setCustomerName("");
     setAmountPaid("");
     setNotes("");
@@ -371,7 +423,6 @@ export default function SalesPage() {
 
         <div className="grid gap-6 lg:grid-cols-3">
 
-          {/* SALE FORM */}
           <section className="space-y-6 lg:col-span-2">
 
             <div className="rounded-xl border bg-white p-5 shadow-sm">
@@ -443,7 +494,6 @@ export default function SalesPage() {
               )}
             </div>
 
-            {/* CART */}
             <div className="rounded-xl border bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center gap-3">
                 <ShoppingCart className="text-green-700" size={22} />
@@ -538,7 +588,6 @@ export default function SalesPage() {
               </div>
             </div>
 
-            {/* PAYMENT DETAILS */}
             <form
               onSubmit={submitSale}
               className="space-y-5 rounded-xl border bg-white p-5 shadow-sm"
@@ -551,17 +600,52 @@ export default function SalesPage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Customer Name (Optional)
+                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <Users size={16} />
+                  Select Registered Customer
                 </label>
-                <input
-                  type="text"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Enter customer name"
-                  className="w-full rounded-lg border border-gray-300 p-3 text-sm outline-none focus:border-green-600"
-                />
+
+                <select
+                  value={selectedCustomer}
+                  onChange={(e) => handleCustomerChange(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white p-3 text-sm outline-none focus:border-green-600"
+                >
+                  <option value="">Walk-in / Unregistered Customer</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.customer_name}
+                      {customer.phone ? ` — ${customer.phone}` : ""}
+                    </option>
+                  ))}
+                </select>
+
+                {customers.length === 0 && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    No registered customers yet. You can still record a walk-in sale.
+                  </p>
+                )}
+
+                {selectedCustomer && (
+                  <p className="mt-2 text-sm font-medium text-green-700">
+                    Registered customer: {customerName}
+                  </p>
+                )}
               </div>
+
+              {!selectedCustomer && (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Customer Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Enter customer name"
+                    className="w-full rounded-lg border border-gray-300 p-3 text-sm outline-none focus:border-green-600"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -646,7 +730,6 @@ export default function SalesPage() {
             </form>
           </section>
 
-          {/* RECENT SALES */}
           <aside className="space-y-5">
             <div className="rounded-xl border bg-white p-5 shadow-sm">
               <h2 className="mb-4 text-lg font-bold text-gray-900">

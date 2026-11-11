@@ -12,7 +12,6 @@ import {
   ChartNoAxesCombined,
   ChevronRight,
   CircleAlert,
-  CircleDollarSign,
   CreditCard,
   Package,
   RefreshCw,
@@ -27,7 +26,9 @@ type Sale = {
   sale_number: string | null;
   customer_name: string | null;
   total_amount: number;
+  amount_paid: number;
   balance: number;
+  payment_method: string | null;
   payment_status: string | null;
   created_at: string;
 };
@@ -52,6 +53,34 @@ type Product = {
   low_stock_threshold: number;
 };
 
+type CustomerPayment = {
+  id: string;
+  sale_id: string;
+  amount: number;
+  payment_method: string;
+  reference: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+type PaymentEvent = {
+  id: string;
+  sale_id: string;
+  customer_name: string;
+  sale_number: string;
+  amount: number;
+  payment_method: string;
+  reference: string | null;
+  created_at: string;
+  type: "initial" | "repayment";
+};
+
+type PaymentCategory = {
+  method: string;
+  label: string;
+  amount: number;
+};
+
 type ActivityItem = {
   id: string;
   title: string;
@@ -72,6 +101,18 @@ const localDate = (date: Date) => {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const paymentLabel = (method: string | null | undefined) => {
+  const labels: Record<string, string> = {
+    cash: "Cash",
+    mpesa: "M-Pesa",
+    bank: "Bank Transfer",
+    card: "Card",
+    credit: "Credit",
+  };
+
+  return labels[(method || "").toLowerCase()] || "Other";
 };
 
 const navigation = [
@@ -132,6 +173,8 @@ export default function Home() {
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
+  const [recentPayments, setRecentPayments] = useState<PaymentEvent[]>([]);
+  const [paymentCategories, setPaymentCategories] = useState<PaymentCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -181,11 +224,12 @@ export default function Home() {
 
       const [
         todaySalesResult,
-        recentSalesResult,
+        allSalesResult,
         outstandingResult,
         todayExpensesResult,
         recentExpensesResult,
         productsResult,
+        customerPaymentsResult,
       ] = await Promise.all([
         supabase
           .from("sales")
@@ -197,11 +241,10 @@ export default function Home() {
         supabase
           .from("sales")
           .select(
-            "id, sale_number, customer_name, total_amount, balance, payment_status, created_at"
+            "id, sale_number, customer_name, total_amount, amount_paid, balance, payment_method, payment_status, created_at"
           )
           .eq("business_id", business.id)
-          .order("created_at", { ascending: false })
-          .limit(5),
+          .order("created_at", { ascending: false }),
 
         supabase
           .from("sales")
@@ -229,17 +272,30 @@ export default function Home() {
           .eq("is_active", true)
           .order("quantity", { ascending: true })
           .limit(100),
+
+        supabase
+          .from("customer_payments")
+          .select(
+            "id, sale_id, amount, payment_method, reference, notes, created_at"
+          )
+          .eq("business_id", business.id)
+          .order("created_at", { ascending: false }),
       ]);
 
       if (todaySalesResult.error) throw todaySalesResult.error;
-      if (recentSalesResult.error) throw recentSalesResult.error;
+      if (allSalesResult.error) throw allSalesResult.error;
       if (outstandingResult.error) throw outstandingResult.error;
       if (todayExpensesResult.error) throw todayExpensesResult.error;
       if (recentExpensesResult.error) throw recentExpensesResult.error;
       if (productsResult.error) throw productsResult.error;
+      if (customerPaymentsResult.error) throw customerPaymentsResult.error;
 
       const todaySalesData = todaySalesResult.data || [];
-      const recentSalesData = (recentSalesResult.data || []) as Sale[];
+      const allSalesData = (allSalesResult.data || []) as Sale[];
+      const recentSalesData = allSalesData.slice(0, 5);
+      const customerPaymentsData =
+        (customerPaymentsResult.data || []) as CustomerPayment[];
+
       const todayExpensesData = (todayExpensesResult.data || []) as Expense[];
       const recentExpensesData = (recentExpensesResult.data || []) as Expense[];
 
@@ -319,6 +375,84 @@ export default function Home() {
             Number(product.quantity) <=
             Number(product.low_stock_threshold)
         )
+      );
+
+      // Build payment history without counting repayments twice.
+      const repaymentTotals = new Map<string, number>();
+
+      customerPaymentsData.forEach((payment) => {
+        const current = repaymentTotals.get(payment.sale_id) || 0;
+        repaymentTotals.set(
+          payment.sale_id,
+          current + Number(payment.amount || 0)
+        );
+      });
+
+      const salesById = new Map(
+        allSalesData.map((sale) => [sale.id, sale])
+      );
+
+      const paymentEvents: PaymentEvent[] = [];
+
+      allSalesData.forEach((sale) => {
+        const cumulativePaid = Number(sale.amount_paid || 0);
+        const laterRepayments = repaymentTotals.get(sale.id) || 0;
+        const initialPayment = Math.max(0, cumulativePaid - laterRepayments);
+
+        if (initialPayment > 0) {
+          paymentEvents.push({
+            id: `initial-${sale.id}`,
+            sale_id: sale.id,
+            customer_name: sale.customer_name || "Walk-in customer",
+            sale_number: sale.sale_number || "Sale",
+            amount: initialPayment,
+            payment_method: sale.payment_method || "other",
+            reference: null,
+            created_at: sale.created_at,
+            type: "initial",
+          });
+        }
+      });
+
+      customerPaymentsData.forEach((payment) => {
+        const sale = salesById.get(payment.sale_id);
+
+        paymentEvents.push({
+          id: `repayment-${payment.id}`,
+          sale_id: payment.sale_id,
+          customer_name: sale?.customer_name || "Customer",
+          sale_number: sale?.sale_number || "Sale",
+          amount: Number(payment.amount || 0),
+          payment_method: payment.payment_method || "other",
+          reference: payment.reference,
+          created_at: payment.created_at,
+          type: "repayment",
+        });
+      });
+
+      paymentEvents.sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
+      );
+
+      setRecentPayments(paymentEvents.slice(0, 8));
+
+      const methodOrder = ["cash", "mpesa", "bank", "card"];
+      const methodTotals = new Map<string, number>();
+
+      paymentEvents.forEach((payment) => {
+        const method = payment.payment_method.toLowerCase();
+        const current = methodTotals.get(method) || 0;
+        methodTotals.set(method, current + payment.amount);
+      });
+
+      setPaymentCategories(
+        methodOrder.map((method) => ({
+          method,
+          label: paymentLabel(method),
+          amount: methodTotals.get(method) || 0,
+        }))
       );
     } catch (err) {
       setError(
@@ -674,6 +808,112 @@ export default function Home() {
                     ))}
                   </div>
                 )}
+              </div>
+            </section>
+
+            <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">
+                      Recent Payments
+                    </h2>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Actual money received from sales and repayments.
+                    </p>
+                  </div>
+                  <Wallet className="text-green-700" size={22} />
+                </div>
+
+                {recentPayments.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-gray-500">
+                    No payments recorded yet.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {recentPayments.map((payment) => (
+                      <div
+                        key={payment.id}
+                        className="flex items-center justify-between gap-3 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-800">
+                            {payment.customer_name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {payment.sale_number} · {paymentLabel(payment.payment_method)}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {payment.type === "initial" ? "Sale payment" : "Debt repayment"} ·{" "}
+                            {new Date(payment.created_at).toLocaleString("en-KE")}
+                          </p>
+                        </div>
+                        <p className="shrink-0 text-sm font-bold text-green-700">
+                          +{money(payment.amount)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Link
+                  href="/sales"
+                  className="mt-3 flex items-center justify-center gap-1 border-t border-gray-100 pt-4 text-sm font-semibold text-green-800 hover:text-green-600"
+                >
+                  View Sales and Payments <ChevronRight size={16} />
+                </Link>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">
+                      Payment Categories
+                    </h2>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Total recorded payments by method.
+                    </p>
+                  </div>
+                  <CreditCard className="text-green-700" size={22} />
+                </div>
+
+                <div className="space-y-4">
+                  {paymentCategories.map((category) => (
+                    <div key={category.method}>
+                      <div className="mb-1 flex items-center justify-between gap-3">
+                        <span className="text-sm font-medium text-gray-700">
+                          {category.label}
+                        </span>
+                        <span className="text-sm font-bold text-gray-900">
+                          {money(category.amount)}
+                        </span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                        <div
+                          className="h-full rounded-full bg-green-600"
+                          style={{
+                            width: `${
+                              paymentCategories.reduce(
+                                (sum, item) => sum + item.amount,
+                                0
+                              ) > 0
+                                ? (category.amount /
+                                    paymentCategories.reduce(
+                                      (sum, item) => sum + item.amount,
+                                      0
+                                    )) *
+                                  100
+                                : 0
+                            }%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-5 border-t border-gray-100 pt-4 text-xs text-gray-500">
+                  Based on recorded payments, including customer debt repayments.
+                </p>
               </div>
             </section>
 

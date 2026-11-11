@@ -49,7 +49,7 @@ const money = (amount: number) =>
   }).format(amount);
 
 const inputClass =
-  "block w-full min-w-0 rounded-lg border border-gray-300 bg-white p-3 text-sm text-gray-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100";
+  "block box-border w-full min-w-0 max-w-full rounded-lg border border-gray-300 bg-white p-3 text-sm text-gray-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100";
 
 const labelClass =
   "mb-2 block text-sm font-semibold text-gray-700";
@@ -371,7 +371,7 @@ export default function SalesPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen w-full bg-gray-50 p-5 sm:p-8">
+      <main className="box-border min-h-screen w-full min-w-0 max-w-full flex-1 bg-gray-50 p-5 sm:p-8">
         <p className="text-sm text-gray-600">
           Loading MALIKEEP Sales...
         </p>
@@ -380,8 +380,8 @@ export default function SalesPage() {
   }
 
   return (
-    <main className="min-h-screen w-full max-w-full overflow-x-hidden bg-gray-50 px-3 py-4 sm:px-5 sm:py-6 md:p-8">
-      <div className="mx-auto w-full max-w-7xl min-w-0 space-y-5 sm:space-y-6">
+    <main className="relative left-0 box-border min-h-screen w-full min-w-0 max-w-full flex-1 overflow-x-clip bg-gray-50 px-3 py-4 sm:px-5 sm:py-6 md:p-8">
+      <div className="mx-0 w-full min-w-0 max-w-7xl space-y-5 sm:space-y-6">
 
         {/* PAGE HEADER */}
         <header className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -411,7 +411,7 @@ export default function SalesPage() {
 
         {/* MESSAGES */}
         {error && (
-          <div className="w-full break-words rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">
+          <div className="w-full min-w-0 break-words rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">
             {error}
           </div>
         )}
@@ -424,12 +424,12 @@ export default function SalesPage() {
         )}
 
         {/* MAIN LAYOUT */}
-        <div className="grid min-w-0 grid-cols-1 items-start gap-5 xl:grid-cols-3">
+        <div className="grid w-full min-w-0 grid-cols-1 items-start gap-5 xl:grid-cols-3">
 
-          <section className="min-w-0 space-y-5 xl:col-span-2">
+          <section className="w-full min-w-0 space-y-5 xl:col-span-2">
 
             {/* ADD PRODUCTS */}
-            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="w-full min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="mb-5 flex min-w-0 items-center gap-3">
                 <div className="shrink-0 rounded-lg bg-green-100 p-3 text-green-700">
                   <Package size={22} />
@@ -450,7 +450,7 @@ export default function SalesPage() {
                   No active products found. Add products before recording a sale.
                 </p>
               ) : (
-                <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="grid w-full min-w-0 grid-cols-1 gap-4 sm:grid-cols-3">
                   <div className="min-w-0 sm:col-span-2">
                     <label className={labelClass}>
                       Select Product
@@ -500,7 +500,7 @@ export default function SalesPage() {
             </div>
 
             {/* CURRENT SALE */}
-            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="w-full min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="mb-4 flex items-center gap-3">
                 <ShoppingCart className="shrink-0 text-green-700" size={22} />
                 <h2 className="text-lg font-bold text-gray-900">
@@ -525,7 +525,7 @@ export default function SalesPage() {
                     {cartDetails.map((item) => (
                       <div
                         key={item.product_id}
-                        className="min-w-0 rounded-lg border border-gray-200 bg-gray-50 p-3"
+                        className="w-full min-w-0 rounded-lg border border-gray-200 bg-gray-50 p-3"
                       >
                         <div className="flex min-w-0 items-start justify-between gap-2">
                           <div className="min-w-0">
@@ -572,7 +572,7 @@ export default function SalesPage() {
                                   Number(e.target.value)
                                 )
                               }
-                              className="w-full rounded-md border border-gray-300 bg-white p-2 text-sm"
+                              className="box-border w-full min-w-0 rounded-md border border-gray-300 bg-white p-2 text-sm"
                             />
                           </div>
                         </div>
@@ -590,7 +590,7 @@ export default function SalesPage() {
                   </div>
 
                   {/* DESKTOP CART TABLE */}
-                  <div className="hidden overflow-x-auto md:block">
+                  <div className="hidden max-w-full overflow-x-auto md:block">
                     <table className="w-full min-w-[600px] text-left text-sm">
                       <thead>
                         <tr className="border-b text-gray-500">
@@ -669,7 +669,7 @@ export default function SalesPage() {
             {/* PAYMENT FORM */}
             <form
               onSubmit={submitSale}
-              className="min-w-0 space-y-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5"
+              className="w-full min-w-0 space-y-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5"
             >
               <div className="flex items-center gap-3">
                 <Wallet className="shrink-0 text-green-700" size={22} />
@@ -782,7 +782,7 @@ export default function SalesPage() {
               </div>
 
               {/* PAYMENT SUMMARY */}
-              <div className="space-y-3 rounded-lg bg-gray-50 p-3 sm:p-4">
+              <div className="w-full min-w-0 space-y-3 rounded-lg bg-gray-50 p-3 sm:p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span className="text-gray-600">Sale Total</span>
                   <span className="font-semibold">{money(total)}</span>
@@ -815,8 +815,8 @@ export default function SalesPage() {
           </section>
 
           {/* RIGHT COLUMN / RECENT SALES */}
-          <aside className="min-w-0 space-y-5">
-            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+          <aside className="w-full min-w-0 space-y-5">
+            <div className="w-full min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
               <h2 className="mb-4 text-lg font-bold text-gray-900">
                 Recent Sales
               </h2>
@@ -826,11 +826,11 @@ export default function SalesPage() {
                   No sales recorded yet.
                 </p>
               ) : (
-                <div className="space-y-4">
+                <div className="w-full min-w-0 space-y-4">
                   {sales.map((sale) => (
                     <div
                       key={sale.id}
-                      className="min-w-0 border-b pb-4 last:border-0 last:pb-0"
+                      className="w-full min-w-0 border-b pb-4 last:border-0 last:pb-0"
                     >
                       <div className="flex min-w-0 items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -881,7 +881,7 @@ export default function SalesPage() {
             </div>
 
             {/* STOCK INFORMATION */}
-            <div className="min-w-0 rounded-xl border border-green-200 bg-green-50 p-4 sm:p-5">
+            <div className="w-full min-w-0 rounded-xl border border-green-200 bg-green-50 p-4 sm:p-5">
               <div className="mb-2 flex items-center gap-2 text-green-800">
                 <CheckCircle2 size={20} className="shrink-0" />
                 <h3 className="font-bold">

@@ -4,7 +4,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ShoppingCart, Plus, Trash2, Receipt, RefreshCw,
-  Wallet, Package, CheckCircle2, Users
+  Wallet, Package, CheckCircle2, Users, CreditCard,
+  Banknote, Smartphone
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
@@ -40,6 +41,33 @@ type Sale = {
   created_at: string;
 };
 
+type CustomerPayment = {
+  id: string;
+  sale_id: string;
+  amount: number;
+  payment_method: string;
+  reference: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+type PaymentEvent = {
+  id: string;
+  sale_id: string;
+  sale_number: string;
+  customer_name: string;
+  amount: number;
+  payment_method: string;
+  created_at: string;
+  type: "initial" | "repayment";
+};
+
+type PaymentCategory = {
+  method: string;
+  label: string;
+  amount: number;
+};
+
 type PaymentMethod = "cash" | "mpesa" | "bank" | "card" | "credit";
 
 const money = (amount: number) =>
@@ -47,6 +75,18 @@ const money = (amount: number) =>
     style: "currency",
     currency: "KES"
   }).format(amount);
+
+const paymentLabel = (method: string) => {
+  const labels: Record<string, string> = {
+    cash: "Cash",
+    mpesa: "M-Pesa",
+    bank: "Bank Transfer",
+    card: "Card",
+    credit: "Credit"
+  };
+
+  return labels[method.toLowerCase()] || "Other";
+};
 
 const inputClass =
   "block box-border w-full min-w-0 max-w-full rounded-lg border border-gray-300 bg-white p-3 text-sm text-gray-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100";
@@ -61,6 +101,9 @@ export default function SalesPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  const [recentPayments, setRecentPayments] = useState<PaymentEvent[]>([]);
+  const [paymentCategories, setPaymentCategories] = useState<PaymentCategory[]>([]);
 
   const [selectedProduct, setSelectedProduct] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -103,29 +146,46 @@ export default function SalesPage() {
     setBusinessId(business.id);
     setBusinessName(business.business_name);
 
-    const [productResult, salesResult, customerResult] =
-      await Promise.all([
-        supabase
-          .from("products")
-          .select("id, product_name, unit, selling_price, buying_price, quantity")
-          .eq("business_id", business.id)
-          .eq("is_active", true)
-          .order("product_name"),
+    const [
+      productResult,
+      salesResult,
+      customerResult,
+      paymentSalesResult,
+      customerPaymentsResult
+    ] = await Promise.all([
+      supabase
+        .from("products")
+        .select("id, product_name, unit, selling_price, buying_price, quantity")
+        .eq("business_id", business.id)
+        .eq("is_active", true)
+        .order("product_name"),
 
-        supabase
-          .from("sales")
-          .select("*")
-          .eq("business_id", business.id)
-          .order("created_at", { ascending: false })
-          .limit(10),
+      supabase
+        .from("sales")
+        .select("*")
+        .eq("business_id", business.id)
+        .order("created_at", { ascending: false })
+        .limit(10),
 
-        supabase
-          .from("customers")
-          .select("id, customer_name, phone")
-          .eq("business_id", business.id)
-          .eq("is_active", true)
-          .order("customer_name")
-      ]);
+      supabase
+        .from("customers")
+        .select("id, customer_name, phone")
+        .eq("business_id", business.id)
+        .eq("is_active", true)
+        .order("customer_name"),
+
+      supabase
+        .from("sales")
+        .select("id, sale_number, customer_name, amount_paid, payment_method, created_at")
+        .eq("business_id", business.id)
+        .order("created_at", { ascending: false }),
+
+      supabase
+        .from("customer_payments")
+        .select("id, sale_id, amount, payment_method, reference, notes, created_at")
+        .eq("business_id", business.id)
+        .order("created_at", { ascending: false })
+    ]);
 
     if (productResult.error) {
       setError(productResult.error.message);
@@ -144,6 +204,104 @@ export default function SalesPage() {
     } else {
       setCustomers((customerResult.data || []) as Customer[]);
     }
+
+    if (paymentSalesResult.error) {
+      setRecentPayments([]);
+      setPaymentCategories([]);
+      setError(`Could not load payment history: ${paymentSalesResult.error.message}`);
+      setLoading(false);
+      return;
+    }
+
+    if (customerPaymentsResult.error) {
+      setRecentPayments([]);
+      setPaymentCategories([]);
+      setError(`Could not load customer repayments: ${customerPaymentsResult.error.message}`);
+      setLoading(false);
+      return;
+    }
+
+    const paymentSales = paymentSalesResult.data || [];
+    const customerPayments =
+      (customerPaymentsResult.data || []) as CustomerPayment[];
+
+    // Customer payment records are later repayments.
+    // Subtract them from cumulative amount_paid to isolate
+    // the amount received when the original sale was recorded.
+    const repaymentTotals = new Map<string, number>();
+
+    customerPayments.forEach((payment) => {
+      repaymentTotals.set(
+        payment.sale_id,
+        (repaymentTotals.get(payment.sale_id) || 0) +
+          Number(payment.amount || 0)
+      );
+    });
+
+const salesById = new Map(
+  paymentSales.map((sale) => [sale.id, sale] as const)
+);
+
+    const events: PaymentEvent[] = [];
+
+    paymentSales.forEach((sale) => {
+      const initialPayment = Math.max(
+        0,
+        Number(sale.amount_paid || 0) -
+          (repaymentTotals.get(sale.id) || 0)
+      );
+
+      if (initialPayment > 0) {
+        events.push({
+          id: `initial-${sale.id}`,
+          sale_id: sale.id,
+          sale_number: sale.sale_number || "Sale",
+          customer_name: sale.customer_name || "Walk-in customer",
+          amount: initialPayment,
+          payment_method: sale.payment_method || "other",
+          created_at: sale.created_at,
+          type: "initial"
+        });
+      }
+    });
+
+    customerPayments.forEach((payment) => {
+      const sale = salesById.get(payment.sale_id);
+
+      events.push({
+        id: `repayment-${payment.id}`,
+        sale_id: payment.sale_id,
+        sale_number: sale?.sale_number || "Sale",
+        customer_name: sale?.customer_name || "Customer",
+        amount: Number(payment.amount || 0),
+        payment_method: payment.payment_method || "other",
+        created_at: payment.created_at,
+        type: "repayment"
+      });
+    });
+
+    events.sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() -
+        new Date(a.created_at).getTime()
+    );
+
+    setRecentPayments(events.slice(0, 10));
+
+    const methods = ["cash", "mpesa", "bank", "card"];
+
+    setPaymentCategories(
+      methods.map((method) => ({
+        method,
+        label: paymentLabel(method),
+        amount: events
+          .filter(
+            (event) =>
+              event.payment_method.toLowerCase() === method
+          )
+          .reduce((sum, event) => sum + event.amount, 0)
+      }))
+    );
 
     setLoading(false);
   }
@@ -178,6 +336,11 @@ export default function SalesPage() {
     : Number(amountPaid || 0);
 
   const balance = total - paid;
+
+  const totalReceived = paymentCategories.reduce(
+    (sum, category) => sum + category.amount,
+    0
+  );
 
   function handleCustomerChange(customerId: string) {
     setSelectedCustomer(customerId);
@@ -814,8 +977,10 @@ export default function SalesPage() {
             </form>
           </section>
 
-          {/* RIGHT COLUMN / RECENT SALES */}
+          {/* RIGHT COLUMN */}
           <aside className="w-full min-w-0 space-y-5">
+
+            {/* RECENT SALES */}
             <div className="w-full min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
               <h2 className="mb-4 text-lg font-bold text-gray-900">
                 Recent Sales
@@ -878,6 +1043,139 @@ export default function SalesPage() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* RECENT PAYMENTS */}
+            <div className="w-full min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Receipt size={20} className="shrink-0 text-green-700" />
+                  <h2 className="text-lg font-bold text-gray-900">
+                    Recent Payments
+                  </h2>
+                </div>
+                <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">
+                  Latest 10
+                </span>
+              </div>
+
+              {recentPayments.length === 0 ? (
+                <p className="py-6 text-center text-sm text-gray-500">
+                  No payment records found.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {recentPayments.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="border-b border-gray-100 pb-4 last:border-0 last:pb-0"
+                    >
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="break-words text-sm font-semibold text-gray-900">
+                            {payment.customer_name}
+                          </p>
+                          <p className="mt-1 break-all text-xs text-gray-500">
+                            {payment.sale_number}
+                          </p>
+                        </div>
+
+                        <span className="shrink-0 text-sm font-bold text-green-800">
+                          {money(payment.amount)}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                            {paymentLabel(payment.payment_method)}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-1 text-xs font-medium ${
+                              payment.type === "repayment"
+                                ? "bg-blue-50 text-blue-700"
+                                : "bg-green-50 text-green-700"
+                            }`}
+                          >
+                            {payment.type === "repayment"
+                              ? "Debt repayment"
+                              : "Sale payment"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="mt-2 text-xs text-gray-500">
+                        {new Date(payment.created_at).toLocaleString("en-KE")}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* PAYMENT CATEGORIES */}
+            <div className="w-full min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-4 flex items-center gap-2">
+                <CreditCard size={20} className="shrink-0 text-green-700" />
+                <h2 className="text-lg font-bold text-gray-900">
+                  Payment Categories
+                </h2>
+              </div>
+
+              <div className="mb-4 rounded-lg bg-green-50 p-3">
+                <p className="text-xs font-medium text-green-700">
+                  Total Payments Received
+                </p>
+                <p className="mt-1 text-2xl font-bold text-green-900">
+                  {money(totalReceived)}
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {paymentCategories.map((category) => {
+                  const percentage = totalReceived > 0
+                    ? (category.amount / totalReceived) * 100
+                    : 0;
+
+                  const CategoryIcon =
+                    category.method === "cash"
+                      ? Banknote
+                      : category.method === "mpesa"
+                      ? Smartphone
+                      : CreditCard;
+
+                  return (
+                    <div key={category.method}>
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <CategoryIcon
+                            size={17}
+                            className="shrink-0 text-gray-500"
+                          />
+                          <span className="text-sm font-medium text-gray-700">
+                            {category.label}
+                          </span>
+                        </div>
+                        <span className="shrink-0 text-sm font-semibold text-gray-900">
+                          {money(category.amount)}
+                        </span>
+                      </div>
+
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                        <div
+                          className="h-full rounded-full bg-green-600 transition-all"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="mt-4 text-xs leading-5 text-gray-500">
+                Credit sales are not counted as money received. They appear
+                here only when an actual payment is recorded.
+              </p>
             </div>
 
             {/* STOCK INFORMATION */}

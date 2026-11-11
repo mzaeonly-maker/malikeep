@@ -3,15 +3,8 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  ShoppingCart,
-  Plus,
-  Trash2,
-  Receipt,
-  RefreshCw,
-  Wallet,
-  Package,
-  CheckCircle2,
-  Users
+  ShoppingCart, Plus, Trash2, Receipt, RefreshCw,
+  Wallet, Package, CheckCircle2, Users
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
@@ -55,6 +48,12 @@ const money = (amount: number) =>
     currency: "KES"
   }).format(amount);
 
+const inputClass =
+  "block w-full min-w-0 rounded-lg border border-gray-300 bg-white p-3 text-sm text-gray-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100";
+
+const labelClass =
+  "mb-2 block text-sm font-semibold text-gray-700";
+
 export default function SalesPage() {
   const [businessId, setBusinessId] = useState("");
   const [businessName, setBusinessName] = useState("");
@@ -65,10 +64,8 @@ export default function SalesPage() {
 
   const [selectedProduct, setSelectedProduct] = useState("");
   const [quantity, setQuantity] = useState("1");
-
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [customerName, setCustomerName] = useState("");
-
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>("cash");
   const [amountPaid, setAmountPaid] = useState("");
@@ -189,7 +186,6 @@ export default function SalesPage() {
       const customer = customers.find(
         (item) => item.id === customerId
       );
-
       setCustomerName(customer?.customer_name || "");
     } else {
       setCustomerName("");
@@ -375,25 +371,30 @@ export default function SalesPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 p-8">
-        <p className="text-gray-600">Loading MALIKEEP Sales...</p>
+      <main className="min-h-screen w-full bg-gray-50 p-5 sm:p-8">
+        <p className="text-sm text-gray-600">
+          Loading MALIKEEP Sales...
+        </p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <div className="mx-auto max-w-7xl space-y-6">
+    <main className="min-h-screen w-full max-w-full overflow-x-hidden bg-gray-50 px-3 py-4 sm:px-5 sm:py-6 md:p-8">
+      <div className="mx-auto w-full max-w-7xl min-w-0 space-y-5 sm:space-y-6">
 
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-green-700">
+        {/* PAGE HEADER */}
+        <header className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="break-words text-sm font-semibold text-green-700">
               {businessName}
             </p>
-            <h1 className="mt-1 text-3xl font-bold text-gray-900">
+
+            <h1 className="mt-1 break-words text-2xl font-bold leading-tight text-gray-900 sm:text-3xl">
               Sales & Payments
             </h1>
-            <p className="mt-1 text-sm text-gray-500">
+
+            <p className="mt-2 max-w-xl text-sm leading-6 text-gray-500">
               Record sales, receive payments and track your transactions.
             </p>
           </div>
@@ -401,59 +402,63 @@ export default function SalesPage() {
           <button
             type="button"
             onClick={loadData}
-            className="flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            className="flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-100 sm:w-auto"
           >
             <RefreshCw size={16} />
             Refresh
           </button>
         </header>
 
+        {/* MESSAGES */}
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="w-full break-words rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-            <CheckCircle2 size={20} className="shrink-0" />
-            <span className="break-all">{success}</span>
+          <div className="flex min-w-0 items-start gap-2 rounded-lg border border-green-200 bg-green-50 p-4 text-sm leading-6 text-green-800">
+            <CheckCircle2 size={20} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 break-all">{success}</span>
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-3">
+        {/* MAIN LAYOUT */}
+        <div className="grid min-w-0 grid-cols-1 items-start gap-5 xl:grid-cols-3">
 
-          <section className="space-y-6 lg:col-span-2">
+          <section className="min-w-0 space-y-5 xl:col-span-2">
 
-            <div className="rounded-xl border bg-white p-5 shadow-sm">
-              <div className="mb-5 flex items-center gap-3">
-                <div className="rounded-lg bg-green-100 p-3 text-green-700">
+            {/* ADD PRODUCTS */}
+            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-5 flex min-w-0 items-center gap-3">
+                <div className="shrink-0 rounded-lg bg-green-100 p-3 text-green-700">
                   <Package size={22} />
                 </div>
-                <div>
+
+                <div className="min-w-0">
                   <h2 className="text-lg font-bold text-gray-900">
                     Add Products
                   </h2>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm leading-5 text-gray-500">
                     Select products and quantities for this sale.
                   </p>
                 </div>
               </div>
 
               {products.length === 0 ? (
-                <p className="rounded-lg bg-yellow-50 p-4 text-sm text-yellow-800">
+                <p className="rounded-lg bg-yellow-50 p-4 text-sm leading-6 text-yellow-800">
                   No active products found. Add products before recording a sale.
                 </p>
               ) : (
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="sm:col-span-2">
-                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div className="min-w-0 sm:col-span-2">
+                    <label className={labelClass}>
                       Select Product
                     </label>
                     <select
                       value={selectedProduct}
                       onChange={(e) => setSelectedProduct(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 bg-white p-3 text-sm outline-none focus:border-green-600"
+                      className={inputClass}
                     >
                       <option value="">Choose a product</option>
                       {products.map((product) => (
@@ -468,8 +473,8 @@ export default function SalesPage() {
                     </select>
                   </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                  <div className="min-w-0">
+                    <label className={labelClass}>
                       Quantity
                     </label>
                     <input
@@ -478,14 +483,14 @@ export default function SalesPage() {
                       step="0.001"
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 p-3 text-sm outline-none focus:border-green-600"
+                      className={inputClass}
                     />
                   </div>
 
                   <button
                     type="button"
                     onClick={addProduct}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-green-700 px-4 py-3 text-sm font-semibold text-white hover:bg-green-800 sm:col-span-3"
+                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-green-700 px-4 py-3 text-sm font-semibold text-white hover:bg-green-800 sm:col-span-3"
                   >
                     <Plus size={18} />
                     Add to Sale
@@ -494,16 +499,17 @@ export default function SalesPage() {
               )}
             </div>
 
-            <div className="rounded-xl border bg-white p-5 shadow-sm">
+            {/* CURRENT SALE */}
+            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="mb-4 flex items-center gap-3">
-                <ShoppingCart className="text-green-700" size={22} />
+                <ShoppingCart className="shrink-0 text-green-700" size={22} />
                 <h2 className="text-lg font-bold text-gray-900">
                   Current Sale
                 </h2>
               </div>
 
               {cartDetails.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-8 text-center">
+                <div className="rounded-lg border border-dashed p-6 text-center sm:p-8">
                   <ShoppingCart className="mx-auto mb-3 text-gray-400" size={32} />
                   <p className="font-medium text-gray-700">
                     Your sale is empty
@@ -513,35 +519,48 @@ export default function SalesPage() {
                   </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b text-gray-500">
-                        <th className="py-3 pr-3">Product</th>
-                        <th className="px-2 py-3">Price</th>
-                        <th className="px-2 py-3">Quantity</th>
-                        <th className="px-2 py-3 text-right">Total</th>
-                        <th className="py-3 pl-2"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {cartDetails.map((item) => (
-                        <tr
-                          key={item.product_id}
-                          className="border-b last:border-0"
-                        >
-                          <td className="py-4 pr-3 font-medium text-gray-900">
-                            {item.product?.product_name}
-                            <p className="text-xs text-gray-500">
+                <>
+                  {/* MOBILE CART CARDS */}
+                  <div className="space-y-3 md:hidden">
+                    {cartDetails.map((item) => (
+                      <div
+                        key={item.product_id}
+                        className="min-w-0 rounded-lg border border-gray-200 bg-gray-50 p-3"
+                      >
+                        <div className="flex min-w-0 items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="break-words text-sm font-bold text-gray-900">
+                              {item.product?.product_name}
+                            </p>
+                            <p className="mt-1 text-xs text-gray-500">
                               Per {item.product?.unit}
                             </p>
-                          </td>
+                          </div>
 
-                          <td className="px-2 py-4 whitespace-nowrap">
-                            {money(Number(item.product?.selling_price || 0))}
-                          </td>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(item.product_id)}
+                            className="shrink-0 rounded-lg p-2 text-red-600 hover:bg-red-50"
+                            aria-label="Remove product"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
 
-                          <td className="px-2 py-4">
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <div className="min-w-0">
+                            <p className="mb-1 text-xs text-gray-500">
+                              Unit price
+                            </p>
+                            <p className="break-words text-sm font-semibold text-gray-800">
+                              {money(Number(item.product?.selling_price || 0))}
+                            </p>
+                          </div>
+
+                          <div className="min-w-0">
+                            <label className="mb-1 block text-xs text-gray-500">
+                              Quantity
+                            </label>
                             <input
                               type="number"
                               min="0.001"
@@ -553,62 +572,124 @@ export default function SalesPage() {
                                   Number(e.target.value)
                                 )
                               }
-                              className="w-20 rounded-md border p-2"
+                              className="w-full rounded-md border border-gray-300 bg-white p-2 text-sm"
                             />
-                          </td>
+                          </div>
+                        </div>
 
-                          <td className="px-2 py-4 text-right font-semibold whitespace-nowrap">
+                        <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-200 pt-3">
+                          <span className="text-sm text-gray-600">
+                            Line total
+                          </span>
+                          <span className="break-words text-sm font-bold text-green-800">
                             {money(item.lineTotal)}
-                          </td>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
 
-                          <td className="py-4 pl-2">
-                            <button
-                              type="button"
-                              onClick={() => removeItem(item.product_id)}
-                              className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                              aria-label="Remove product"
-                            >
-                              <Trash2 size={17} />
-                            </button>
-                          </td>
+                  {/* DESKTOP CART TABLE */}
+                  <div className="hidden overflow-x-auto md:block">
+                    <table className="w-full min-w-[600px] text-left text-sm">
+                      <thead>
+                        <tr className="border-b text-gray-500">
+                          <th className="py-3 pr-3">Product</th>
+                          <th className="px-2 py-3">Price</th>
+                          <th className="px-2 py-3">Quantity</th>
+                          <th className="px-2 py-3 text-right">Total</th>
+                          <th className="py-3 pl-2"></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {cartDetails.map((item) => (
+                          <tr
+                            key={item.product_id}
+                            className="border-b last:border-0"
+                          >
+                            <td className="max-w-[200px] break-words py-4 pr-3 font-medium text-gray-900">
+                              {item.product?.product_name}
+                              <p className="text-xs text-gray-500">
+                                Per {item.product?.unit}
+                              </p>
+                            </td>
+
+                            <td className="whitespace-nowrap px-2 py-4">
+                              {money(Number(item.product?.selling_price || 0))}
+                            </td>
+
+                            <td className="px-2 py-4">
+                              <input
+                                type="number"
+                                min="0.001"
+                                step="0.001"
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  updateQuantity(
+                                    item.product_id,
+                                    Number(e.target.value)
+                                  )
+                                }
+                                className="w-20 rounded-md border p-2"
+                              />
+                            </td>
+
+                            <td className="whitespace-nowrap px-2 py-4 text-right font-semibold">
+                              {money(item.lineTotal)}
+                            </td>
+
+                            <td className="py-4 pl-2">
+                              <button
+                                type="button"
+                                onClick={() => removeItem(item.product_id)}
+                                className="rounded-lg p-2 text-red-600 hover:bg-red-50"
+                                aria-label="Remove product"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
 
-              <div className="mt-5 flex items-center justify-between border-t pt-4">
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t pt-4">
                 <span className="font-semibold text-gray-700">
                   Sale Total
                 </span>
-                <span className="text-2xl font-bold text-green-800">
+                <span className="break-words text-xl font-bold text-green-800 sm:text-2xl">
                   {money(total)}
                 </span>
               </div>
             </div>
 
+            {/* PAYMENT FORM */}
             <form
               onSubmit={submitSale}
-              className="space-y-5 rounded-xl border bg-white p-5 shadow-sm"
+              className="min-w-0 space-y-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5"
             >
               <div className="flex items-center gap-3">
-                <Wallet className="text-green-700" size={22} />
+                <Wallet className="shrink-0 text-green-700" size={22} />
                 <h2 className="text-lg font-bold text-gray-900">
                   Payment Details
                 </h2>
               </div>
 
-              <div>
-                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
-                  <Users size={16} />
-                  Select Registered Customer
+              <div className="min-w-0">
+                <label className={labelClass}>
+                  <span className="inline-flex items-center gap-2">
+                    <Users size={16} />
+                    Select Registered Customer
+                  </span>
                 </label>
 
                 <select
                   value={selectedCustomer}
                   onChange={(e) => handleCustomerChange(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white p-3 text-sm outline-none focus:border-green-600"
+                  className={inputClass}
                 >
                   <option value="">Walk-in / Unregistered Customer</option>
                   {customers.map((customer) => (
@@ -620,21 +701,21 @@ export default function SalesPage() {
                 </select>
 
                 {customers.length === 0 && (
-                  <p className="mt-2 text-xs text-gray-500">
+                  <p className="mt-2 text-xs leading-5 text-gray-500">
                     No registered customers yet. You can still record a walk-in sale.
                   </p>
                 )}
 
                 {selectedCustomer && (
-                  <p className="mt-2 text-sm font-medium text-green-700">
+                  <p className="mt-2 break-words text-sm font-medium text-green-700">
                     Registered customer: {customerName}
                   </p>
                 )}
               </div>
 
               {!selectedCustomer && (
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                <div className="min-w-0">
+                  <label className={labelClass}>
                     Customer Name (Optional)
                   </label>
                   <input
@@ -642,13 +723,13 @@ export default function SalesPage() {
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     placeholder="Enter customer name"
-                    className="w-full rounded-lg border border-gray-300 p-3 text-sm outline-none focus:border-green-600"
+                    className={inputClass}
                   />
                 </div>
               )}
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+              <div className="min-w-0">
+                <label className={labelClass}>
                   Payment Method
                 </label>
                 <select
@@ -656,7 +737,7 @@ export default function SalesPage() {
                   onChange={(e) =>
                     setPaymentMethod(e.target.value as PaymentMethod)
                   }
-                  className="w-full rounded-lg border border-gray-300 bg-white p-3 text-sm outline-none focus:border-green-600"
+                  className={inputClass}
                 >
                   <option value="cash">Cash</option>
                   <option value="mpesa">M-Pesa</option>
@@ -667,8 +748,8 @@ export default function SalesPage() {
               </div>
 
               {paymentMethod !== "credit" && (
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                <div className="min-w-0">
+                  <label className={labelClass}>
                     Amount Received (KES)
                   </label>
                   <input
@@ -679,37 +760,40 @@ export default function SalesPage() {
                     value={amountPaid}
                     onChange={(e) => setAmountPaid(e.target.value)}
                     placeholder="Enter amount received"
-                    className="w-full rounded-lg border border-gray-300 p-3 text-sm outline-none focus:border-green-600"
+                    className={inputClass}
                   />
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs leading-5 text-gray-500">
                     For a partial payment, enter the amount actually received.
                   </p>
                 </div>
               )}
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+              <div className="min-w-0">
+                <label className={labelClass}>
                   Notes (Optional)
                 </label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
+                  rows={3}
                   placeholder="Additional sale information"
-                  className="w-full rounded-lg border border-gray-300 p-3 text-sm outline-none focus:border-green-600"
+                  className={inputClass}
                 />
               </div>
 
-              <div className="space-y-2 rounded-lg bg-gray-50 p-4">
-                <div className="flex justify-between text-sm">
+              {/* PAYMENT SUMMARY */}
+              <div className="space-y-3 rounded-lg bg-gray-50 p-3 sm:p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span className="text-gray-600">Sale Total</span>
                   <span className="font-semibold">{money(total)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
+
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span className="text-gray-600">Amount Received</span>
                   <span className="font-semibold">{money(paid)}</span>
                 </div>
-                <div className="flex justify-between border-t pt-3">
+
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
                   <span className="font-semibold text-gray-800">
                     Outstanding Balance
                   </span>
@@ -722,7 +806,7 @@ export default function SalesPage() {
               <button
                 type="submit"
                 disabled={saving || cart.length === 0 || total <= 0}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-700 px-5 py-4 font-semibold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex min-h-14 w-full items-center justify-center gap-2 rounded-lg bg-green-700 px-4 py-4 text-center font-semibold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Receipt size={19} />
                 {saving ? "Recording Sale..." : "Complete Sale"}
@@ -730,8 +814,9 @@ export default function SalesPage() {
             </form>
           </section>
 
-          <aside className="space-y-5">
-            <div className="rounded-xl border bg-white p-5 shadow-sm">
+          {/* RIGHT COLUMN / RECENT SALES */}
+          <aside className="min-w-0 space-y-5">
+            <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
               <h2 className="mb-4 text-lg font-bold text-gray-900">
                 Recent Sales
               </h2>
@@ -745,20 +830,20 @@ export default function SalesPage() {
                   {sales.map((sale) => (
                     <div
                       key={sale.id}
-                      className="border-b pb-4 last:border-0 last:pb-0"
+                      className="min-w-0 border-b pb-4 last:border-0 last:pb-0"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <div className="min-w-0">
                           <p className="break-all text-sm font-semibold text-gray-900">
                             {sale.sale_number}
                           </p>
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="mt-1 break-words text-xs text-gray-500">
                             {sale.customer_name || "Walk-in customer"}
                           </p>
                         </div>
 
                         <span
-                          className={`rounded-full px-2 py-1 text-xs font-medium ${
+                          className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${
                             sale.payment_status === "paid"
                               ? "bg-green-100 text-green-700"
                               : sale.payment_status === "partial"
@@ -770,22 +855,22 @@ export default function SalesPage() {
                         </span>
                       </div>
 
-                      <div className="mt-3 flex justify-between text-sm">
+                      <div className="mt-3 flex flex-wrap justify-between gap-2 text-sm">
                         <span className="text-gray-500">Total</span>
                         <span className="font-semibold">
                           {money(Number(sale.total_amount))}
                         </span>
                       </div>
 
-                      <div className="mt-1 flex justify-between text-xs text-gray-500">
+                      <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-gray-500">
                         <span>{sale.payment_method.toUpperCase()}</span>
-                        <span>
+                        <span className="break-words">
                           {new Date(sale.created_at).toLocaleString("en-KE")}
                         </span>
                       </div>
 
                       {Number(sale.balance) > 0 && (
-                        <p className="mt-2 text-xs font-medium text-red-700">
+                        <p className="mt-2 break-words text-xs font-semibold text-red-700">
                           Balance: {money(Number(sale.balance))}
                         </p>
                       )}
@@ -795,12 +880,16 @@ export default function SalesPage() {
               )}
             </div>
 
-            <div className="rounded-xl border border-green-200 bg-green-50 p-5">
+            {/* STOCK INFORMATION */}
+            <div className="min-w-0 rounded-xl border border-green-200 bg-green-50 p-4 sm:p-5">
               <div className="mb-2 flex items-center gap-2 text-green-800">
-                <CheckCircle2 size={20} />
-                <h3 className="font-bold">Automatic Stock Control</h3>
+                <CheckCircle2 size={20} className="shrink-0" />
+                <h3 className="font-bold">
+                  Automatic Stock Control
+                </h3>
               </div>
-              <p className="text-sm leading-6 text-green-900">
+
+              <p className="break-words text-sm leading-6 text-green-900">
                 When a sale is completed, MALIKEEP checks available stock,
                 records the sale and deducts the sold quantities automatically.
                 Insufficient stock prevents the sale from being recorded.

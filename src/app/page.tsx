@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   ArrowDownRight,
@@ -165,6 +166,9 @@ const quickActions = [
 ];
 
 export default function Home() {
+  const router = useRouter();
+
+  const [loggingOut, setLoggingOut] = useState(false);
   const [businessName, setBusinessName] = useState("");
   const [salesToday, setSalesToday] = useState(0);
   const [expensesToday, setExpensesToday] = useState(0);
@@ -178,6 +182,22 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    setError("");
+
+    const { error: logoutError } = await supabase.auth.signOut();
+
+    if (logoutError) {
+      setError(logoutError.message);
+      setLoggingOut(false);
+      return;
+    }
+
+    router.replace("/login");
+    router.refresh();
+  };
+
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -189,7 +209,8 @@ export default function Home() {
       } = await supabase.auth.getUser();
 
       if (authError || !user) {
-        throw new Error("Please log in again to access your dashboard.");
+        router.replace("/login");
+        return;
       }
 
       const { data: business, error: businessError } = await supabase
@@ -463,7 +484,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     loadDashboard();
@@ -490,8 +511,20 @@ export default function Home() {
             Know Your Business. Grow Your Business.
           </p>
         </div>
-        <div className="text-xs text-[#d9e7dd] sm:text-sm">
-          Small Business Management
+
+        <div className="flex items-center gap-3">
+          <div className="hidden text-xs text-[#d9e7dd] sm:block sm:text-sm">
+            Small Business Management
+          </div>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="rounded-lg border border-white/30 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-50"
+          >
+            {loggingOut ? "Signing out..." : "Logout"}
+          </button>
         </div>
       </header>
 

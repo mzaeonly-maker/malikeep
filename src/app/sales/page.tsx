@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   ShoppingCart, Plus, Trash2, Receipt, RefreshCw,
   Wallet, Package, CheckCircle2, Users, CreditCard,
@@ -95,6 +96,8 @@ const labelClass =
   "mb-2 block text-sm font-semibold text-gray-700";
 
 export default function SalesPage() {
+  const router = useRouter();
+
   const [businessId, setBusinessId] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
@@ -123,10 +126,23 @@ export default function SalesPage() {
     setLoading(true);
     setError("");
 
+    // AUTHENTICATION CHECK
+    const {
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      router.replace("/login");
+      return;
+    }
+
+    // LOAD ONLY THE LOGGED-IN USER'S BUSINESS
     const { data: businessRows, error: businessError } =
       await supabase
         .from("businesses")
         .select("id, business_name")
+        .eq("owner_id", user.id)
         .limit(1);
 
     if (businessError) {
@@ -225,9 +241,7 @@ export default function SalesPage() {
     const customerPayments =
       (customerPaymentsResult.data || []) as CustomerPayment[];
 
-    // Customer payment records are later repayments.
-    // Subtract them from cumulative amount_paid to isolate
-    // the amount received when the original sale was recorded.
+    // Separate later repayments from original sale payments.
     const repaymentTotals = new Map<string, number>();
 
     customerPayments.forEach((payment) => {
@@ -238,9 +252,9 @@ export default function SalesPage() {
       );
     });
 
-const salesById = new Map(
-  paymentSales.map((sale) => [sale.id, sale] as const)
-);
+    const salesById = new Map(
+      paymentSales.map((sale) => [sale.id, sale] as const)
+    );
 
     const events: PaymentEvent[] = [];
 
@@ -308,7 +322,7 @@ const salesById = new Map(
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [router]);
 
   const cartDetails = useMemo(() => {
     return cart.map((item) => {

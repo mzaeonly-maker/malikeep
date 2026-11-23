@@ -1,6 +1,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import type { CookieOptions } from "@supabase/ssr";
 
 export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,7 +16,7 @@ export async function middleware(request: NextRequest) {
   const refreshedCookies: Array<{
     name: string;
     value: string;
-    options?: any;
+    options?: CookieOptions;
   }> = [];
 
   const supabase = createServerClient(

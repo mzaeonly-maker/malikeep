@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   BarChart3,
   CalendarDays,
@@ -58,6 +59,8 @@ const inputClass =
   "block w-full rounded-lg border border-gray-300 bg-white p-3 text-sm text-gray-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100";
 
 export default function ReportsPage() {
+  const router = useRouter();
+
   const today = localDate(new Date());
   const firstDayOfMonth = localDate(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
@@ -86,7 +89,8 @@ export default function ReportsPage() {
       } = await supabase.auth.getUser();
 
       if (authError || !user) {
-        throw new Error("Please log in again to access reports.");
+        router.replace("/login");
+        return;
       }
 
       const { data: business, error: businessError } = await supabase
@@ -108,7 +112,8 @@ export default function ReportsPage() {
 
       const start = new Date(`${startDate}T00:00:00`).toISOString();
       const end = new Date(
-        new Date(`${endDate}T00:00:00`).getTime() + 24 * 60 * 60 * 1000
+        new Date(`${endDate}T00:00:00`).getTime() +
+          24 * 60 * 60 * 1000
       ).toISOString();
 
       const [
@@ -132,8 +137,6 @@ export default function ReportsPage() {
           .gte("created_at", start)
           .lt("created_at", end),
 
-        // Fetch all payment history so we can separate the
-        // original sale payment from later repayments.
         supabase
           .from("customer_payments")
           .select("sale_id, amount, created_at")
@@ -166,7 +169,7 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, router]);
 
   useEffect(() => {
     loadData();
@@ -198,12 +201,11 @@ export default function ReportsPage() {
 
   const netProfit = grossProfit - operatingExpenses;
 
-  // Initial payments are stored on sales.amount_paid.
-  // Later repayments are stored in customer_payments.
   const repaymentsBySale = new Map<string, number>();
 
   payments.forEach(payment => {
     const current = repaymentsBySale.get(payment.sale_id) || 0;
+
     repaymentsBySale.set(
       payment.sale_id,
       current + Number(payment.amount || 0)
@@ -212,6 +214,7 @@ export default function ReportsPage() {
 
   const initialPayments = sales.reduce((sum, sale) => {
     const laterPayments = repaymentsBySale.get(sale.id) || 0;
+
     const initialPayment = Math.max(
       0,
       Number(sale.amount_paid || 0) - laterPayments
@@ -221,14 +224,20 @@ export default function ReportsPage() {
   }, 0);
 
   const startBoundary = new Date(`${startDate}T00:00:00`).getTime();
+
   const endBoundary = new Date(
-    new Date(`${endDate}T00:00:00`).getTime() + 24 * 60 * 60 * 1000
+    new Date(`${endDate}T00:00:00`).getTime() +
+      24 * 60 * 60 * 1000
   ).getTime();
 
   const laterPaymentsInPeriod = payments
     .filter(payment => {
       const paymentTime = new Date(payment.created_at).getTime();
-      return paymentTime >= startBoundary && paymentTime < endBoundary;
+
+      return (
+        paymentTime >= startBoundary &&
+        paymentTime < endBoundary
+      );
     })
     .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
 
@@ -243,8 +252,10 @@ export default function ReportsPage() {
 
   const expenseBreakdown = expenses.reduce((result, item) => {
     const category = item.category || "Other";
+
     result[category] =
       (result[category] || 0) + Number(item.amount || 0);
+
     return result;
   }, {} as Record<string, number>);
 
@@ -261,12 +272,15 @@ export default function ReportsPage() {
       const day = now.getDay();
       const mondayOffset = day === 0 ? 6 : day - 1;
       const monday = new Date(now);
+
       monday.setDate(now.getDate() - mondayOffset);
       start = localDate(monday);
     }
 
     if (period === "month") {
-      start = localDate(new Date(now.getFullYear(), now.getMonth(), 1));
+      start = localDate(
+        new Date(now.getFullYear(), now.getMonth(), 1)
+      );
     }
 
     if (period === "year") {
@@ -296,9 +310,11 @@ export default function ReportsPage() {
             <p className="text-sm font-semibold text-green-700">
               {businessName}
             </p>
+
             <h1 className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">
               Financial Reports
             </h1>
+
             <p className="mt-2 text-sm text-gray-500">
               Understand your sales, costs, expenses and business profit.
             </p>
@@ -331,6 +347,7 @@ export default function ReportsPage() {
               <label className="mb-2 block text-sm font-semibold text-gray-700">
                 From
               </label>
+
               <input
                 type="date"
                 value={startDate}
@@ -344,6 +361,7 @@ export default function ReportsPage() {
               <label className="mb-2 block text-sm font-semibold text-gray-700">
                 To
               </label>
+
               <input
                 type="date"
                 value={endDate}
@@ -363,6 +381,7 @@ export default function ReportsPage() {
             >
               Today
             </button>
+
             <button
               type="button"
               onClick={() => setPeriod("week")}
@@ -370,6 +389,7 @@ export default function ReportsPage() {
             >
               This Week
             </button>
+
             <button
               type="button"
               onClick={() => setPeriod("month")}
@@ -377,6 +397,7 @@ export default function ReportsPage() {
             >
               This Month
             </button>
+
             <button
               type="button"
               onClick={() => setPeriod("year")}
@@ -393,9 +414,11 @@ export default function ReportsPage() {
               <p className="text-sm text-gray-500">Sales Revenue</p>
               <TrendingUp className="text-green-700" size={22} />
             </div>
+
             <p className="mt-3 break-words text-2xl font-bold text-gray-900">
               {money(revenue)}
             </p>
+
             <p className="mt-1 text-xs text-gray-500">
               {saleCount} recorded sales
             </p>
@@ -406,9 +429,11 @@ export default function ReportsPage() {
               <p className="text-sm text-gray-500">Cost of Goods Sold</p>
               <Package className="text-orange-600" size={22} />
             </div>
+
             <p className="mt-3 break-words text-2xl font-bold text-gray-900">
               {money(costOfGoods)}
             </p>
+
             <p className="mt-1 text-xs text-gray-500">
               Cost of products sold
             </p>
@@ -419,9 +444,11 @@ export default function ReportsPage() {
               <p className="text-sm text-gray-500">Gross Profit</p>
               <BarChart3 className="text-blue-700" size={22} />
             </div>
+
             <p className={`mt-3 break-words text-2xl font-bold ${grossProfit >= 0 ? "text-green-700" : "text-red-600"}`}>
               {money(grossProfit)}
             </p>
+
             <p className="mt-1 text-xs text-gray-500">
               Revenue minus cost of goods
             </p>
@@ -432,9 +459,11 @@ export default function ReportsPage() {
               <p className="text-sm text-gray-500">Operating Expenses</p>
               <TrendingDown className="text-red-600" size={22} />
             </div>
+
             <p className="mt-3 break-words text-2xl font-bold text-gray-900">
               {money(operatingExpenses)}
             </p>
+
             <p className="mt-1 text-xs text-gray-500">
               Excludes stock purchases
             </p>
@@ -444,6 +473,7 @@ export default function ReportsPage() {
         <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex items-center gap-2">
             <CircleDollarSign className="text-green-700" size={23} />
+
             <h2 className="text-lg font-bold text-gray-900">
               Net Profit / Loss
             </h2>
@@ -464,12 +494,14 @@ export default function ReportsPage() {
                 {money(revenue)}
               </p>
             </div>
+
             <div>
               <p className="text-xs text-gray-500">Gross Profit</p>
               <p className="mt-1 font-semibold text-gray-900">
                 {money(grossProfit)}
               </p>
             </div>
+
             <div>
               <p className="text-xs text-gray-500">Operating Expenses</p>
               <p className="mt-1 font-semibold text-gray-900">
@@ -485,9 +517,11 @@ export default function ReportsPage() {
               <p className="text-sm text-gray-500">Payments Received</p>
               <Wallet className="text-green-700" size={22} />
             </div>
+
             <p className="mt-3 break-words text-2xl font-bold text-gray-900">
               {money(paymentsReceived)}
             </p>
+
             <p className="mt-1 text-xs text-gray-500">
               Initial payments and later repayments received in this period
             </p>
@@ -498,9 +532,11 @@ export default function ReportsPage() {
               <p className="text-sm text-gray-500">Outstanding Balance</p>
               <Receipt className="text-orange-600" size={22} />
             </div>
+
             <p className="mt-3 break-words text-2xl font-bold text-gray-900">
               {money(outstandingBalance)}
             </p>
+
             <p className="mt-1 text-xs text-gray-500">
               Current unpaid balance on sales in this report period
             </p>
@@ -510,6 +546,7 @@ export default function ReportsPage() {
         <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <Package className="text-orange-600" size={21} />
+
             <h2 className="text-lg font-bold text-gray-900">
               Stock Purchases
             </h2>
@@ -530,6 +567,7 @@ export default function ReportsPage() {
           <h2 className="text-lg font-bold text-gray-900">
             Expense Breakdown
           </h2>
+
           <p className="mt-1 text-sm text-gray-500">
             Expenses recorded during the selected period.
           </p>
@@ -548,6 +586,7 @@ export default function ReportsPage() {
                   <span className="text-sm text-gray-700">
                     {category}
                   </span>
+
                   <span className="text-sm font-semibold text-gray-900">
                     {money(amount)}
                   </span>

@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 type Business = {
@@ -34,6 +35,8 @@ const movementLabels: Record<string, string> = {
 };
 
 export default function InventoryPage() {
+  const router = useRouter();
+
   const [business, setBusiness] = useState<Business | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
@@ -84,22 +87,33 @@ export default function InventoryPage() {
   }, [productId]);
 
   useEffect(() => {
+    let active = true;
+
     async function initialize() {
-      const { data: { user }, error: authError } =
-        await supabase.auth.getUser();
+      setLoading(true);
+      setError("");
+
+      const {
+        data: { user },
+        error: authError
+      } = await supabase.auth.getUser();
+
+      if (!active) return;
 
       if (authError || !user) {
-        setError("Please log in to manage your inventory.");
-        setLoading(false);
+        router.replace("/login");
         return;
       }
 
       const { data, error: businessError } = await supabase
         .from("businesses")
         .select("id, business_name")
+        .eq("owner_id", user.id)
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
+
+      if (!active) return;
 
       if (businessError || !data) {
         setError(
@@ -112,11 +126,18 @@ export default function InventoryPage() {
 
       setBusiness(data as Business);
       await loadInventory(data.id);
-      setLoading(false);
+
+      if (active) {
+        setLoading(false);
+      }
     }
 
     initialize();
-  }, [loadInventory]);
+
+    return () => {
+      active = false;
+    };
+  }, [loadInventory, router]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -223,6 +244,19 @@ export default function InventoryPage() {
           </p>
         </header>
 
+        {error && (
+          <div style={{
+            background: "#fff0f0",
+            color: "#b42318",
+            padding: "13px",
+            borderRadius: "8px",
+            marginBottom: "18px",
+            fontSize: "14px"
+          }}>
+            {error}
+          </div>
+        )}
+
         {business && (
           <section style={{
             background: "white",
@@ -287,106 +321,98 @@ export default function InventoryPage() {
               No products found. Add products before managing stock.
             </p>
           ) : (
-            <>
-              <form onSubmit={handleSubmit}>
-                <label style={labelStyle}>
-                  Select Product
-                  <select
-                    style={inputStyle}
-                    value={productId}
-                    onChange={(e) => setProductId(e.target.value)}
-                  >
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.product_name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {selectedProduct && (
-                  <p style={{
-                    background: "#e8f1ea",
-                    color: "#164a32",
-                    padding: "12px",
-                    borderRadius: "8px",
-                    fontSize: "14px"
-                  }}>
-                    Current stock: <strong>
-                      {Number(selectedProduct.quantity)} {selectedProduct.unit}
-                    </strong>
-                  </p>
-                )}
-
-                <label style={labelStyle}>
-                  Movement Type
-                  <select
-                    style={inputStyle}
-                    value={movementType}
-                    onChange={(e) => setMovementType(e.target.value)}
-                  >
-                    <option value="restock">Stock Received / Restock</option>
-                    <option value="damage">Damaged Stock</option>
-                    <option value="adjustment_increase">Stock Increase</option>
-                    <option value="adjustment_decrease">Stock Decrease</option>
-                  </select>
-                </label>
-
-                <label style={labelStyle}>
-                  Quantity
-                  <input
-                    style={inputStyle}
-                    type="number"
-                    min="0.001"
-                    step="0.001"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    placeholder="Enter quantity"
-                    required
-                  />
-                </label>
-
-                <label style={labelStyle}>
-                  Reason / Notes
-                  <textarea
-                    style={{ ...inputStyle, minHeight: "85px" }}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="e.g. Received 5 new reams from supplier"
-                  />
-                </label>
-
-                {error && (
-                  <p style={{ color: "#b42318", fontSize: "14px" }}>
-                    {error}
-                  </p>
-                )}
-
-                {message && (
-                  <p style={{ color: "#167044", fontSize: "14px" }}>
-                    {message}
-                  </p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={saving}
-                  style={{
-                    width: "100%",
-                    padding: "14px",
-                    background: "#164a32",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "9px",
-                    fontSize: "15px",
-                    fontWeight: 700,
-                    cursor: "pointer"
-                  }}
+            <form onSubmit={handleSubmit}>
+              <label style={labelStyle}>
+                Select Product
+                <select
+                  style={inputStyle}
+                  value={productId}
+                  onChange={(e) => setProductId(e.target.value)}
                 >
-                  {saving ? "Updating Stock..." : "Save Stock Movement"}
-                </button>
-              </form>
-            </>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.product_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {selectedProduct && (
+                <p style={{
+                  background: "#e8f1ea",
+                  color: "#164a32",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  fontSize: "14px"
+                }}>
+                  Current stock: <strong>
+                    {Number(selectedProduct.quantity)} {selectedProduct.unit}
+                  </strong>
+                </p>
+              )}
+
+              <label style={labelStyle}>
+                Movement Type
+                <select
+                  style={inputStyle}
+                  value={movementType}
+                  onChange={(e) => setMovementType(e.target.value)}
+                >
+                  <option value="restock">Stock Received / Restock</option>
+                  <option value="damage">Damaged Stock</option>
+                  <option value="adjustment_increase">Stock Increase</option>
+                  <option value="adjustment_decrease">Stock Decrease</option>
+                </select>
+              </label>
+
+              <label style={labelStyle}>
+                Quantity
+                <input
+                  style={inputStyle}
+                  type="number"
+                  min="0.001"
+                  step="0.001"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  placeholder="Enter quantity"
+                  required
+                />
+              </label>
+
+              <label style={labelStyle}>
+                Reason / Notes
+                <textarea
+                  style={{ ...inputStyle, minHeight: "85px" }}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="e.g. Received 5 new reams from supplier"
+                />
+              </label>
+
+              {message && (
+                <p style={{ color: "#167044", fontSize: "14px" }}>
+                  {message}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={saving}
+                style={{
+                  width: "100%",
+                  padding: "14px",
+                  background: "#164a32",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "9px",
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+              >
+                {saving ? "Updating Stock..." : "Save Stock Movement"}
+              </button>
+            </form>
           )}
         </section>
 

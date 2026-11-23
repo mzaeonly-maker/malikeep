@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 type Business = {
@@ -22,6 +23,8 @@ type Product = {
 };
 
 export default function ProductsPage() {
+  const router = useRouter();
+
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [businessId, setBusinessId] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
@@ -43,18 +46,23 @@ export default function ProductsPage() {
 
   useEffect(() => {
     async function loadBusinesses() {
-      const { data: { user }, error: authError } =
-        await supabase.auth.getUser();
+      setLoading(true);
+      setError("");
+
+      const {
+        data: { user },
+        error: authError
+      } = await supabase.auth.getUser();
 
       if (authError || !user) {
-        setError("Please log in to manage your products.");
-        setLoading(false);
+        router.replace("/login");
         return;
       }
 
       const { data, error: businessError } = await supabase
         .from("businesses")
         .select("id, business_name")
+        .eq("owner_id", user.id)
         .order("created_at", { ascending: true });
 
       if (businessError) {
@@ -76,7 +84,7 @@ export default function ProductsPage() {
     }
 
     loadBusinesses();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     async function loadProducts() {

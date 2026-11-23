@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   Users,
   UserPlus,
@@ -54,6 +55,8 @@ const money = (amount: number) =>
   }).format(amount);
 
 export default function CustomersPage() {
+  const router = useRouter();
+
   const [businessId, setBusinessId] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [debts, setDebts] = useState<DebtSale[]>([]);
@@ -82,10 +85,21 @@ export default function CustomersPage() {
     setLoading(true);
     setError("");
 
+    const {
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      router.replace("/login");
+      return;
+    }
+
     const { data: businesses, error: businessError } =
       await supabase
         .from("businesses")
         .select("id")
+        .eq("owner_id", user.id)
         .limit(1);
 
     if (businessError) {
@@ -146,7 +160,7 @@ export default function CustomersPage() {
     }
 
     setLoading(false);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     loadData();

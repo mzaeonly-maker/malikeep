@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   Wallet, Plus, Trash2, RefreshCw, Receipt,
   TrendingDown, CheckCircle2, Pencil
@@ -44,6 +45,8 @@ const inputClass =
   "block w-full min-w-0 rounded-lg border border-gray-300 bg-white p-3 text-sm text-gray-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100";
 
 export default function ExpensesPage() {
+  const router = useRouter();
+
   const [businessId, setBusinessId] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -64,12 +67,13 @@ export default function ExpensesPage() {
     setLoading(true);
     setError("");
 
-    const { data: { user }, error: authError } =
-      await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      setError("Please log in again to access expenses.");
-      setLoading(false);
+      router.replace("/login");
       return;
     }
 
@@ -111,7 +115,7 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [router]);
 
   const totalExpenses = expenses.reduce(
     (sum, item) => sum + Number(item.amount), 0
@@ -290,7 +294,7 @@ export default function ExpensesPage() {
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="rounded-xl border bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
-             <p className="text-sm text-gray-500">Today&apos;s Expenses</p>
+              <p className="text-sm text-gray-500">Today&apos;s Expenses</p>
               <Wallet className="text-orange-600" size={22} />
             </div>
             <p className="mt-3 text-2xl font-bold text-gray-900">

@@ -12,6 +12,12 @@ export async function middleware(request: NextRequest) {
 
   let response = NextResponse.next({ request });
 
+  const refreshedCookies: Array<{
+    name: string;
+    value: string;
+    options?: any;
+  }> = [];
+
   const supabase = createServerClient(
     supabaseUrl,
     supabaseAnonKey,
@@ -21,8 +27,9 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => {
+          cookiesToSet.forEach(({ name, value, options }) => {
             request.cookies.set(name, value);
+            refreshedCookies.push({ name, value, options });
           });
 
           response = NextResponse.next({ request });
@@ -35,7 +42,45 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+    error
+  } = await supabase.auth.getUser();
+
+  const pathname = request.nextUrl.pathname;
+
+  const protectedPaths = [
+    "/",
+    "/sales",
+    "/products",
+    "/customers",
+    "/expenses",
+    "/reports",
+    "/inventory",
+    "/business/setup"
+  ];
+
+  const isProtectedRoute = protectedPaths.some((path) =>
+    path === "/"
+      ? pathname === "/"
+      : pathname === path || pathname.startsWith(`${path}/`)
+  );
+
+  if (isProtectedRoute && (error || !user)) {
+    const loginUrl = request.nextUrl.clone();
+
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("next", pathname);
+
+    const redirectResponse = NextResponse.redirect(loginUrl);
+
+    refreshedCookies.forEach(({ name, value, options }) => {
+      redirectResponse.cookies.set(name, value, options);
+    });
+
+    return redirectResponse;
+  }
 
   return response;
 }

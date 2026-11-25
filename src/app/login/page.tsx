@@ -16,6 +16,27 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  async function redirectUser(userId: string) {
+    const { data: business, error: businessError } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("owner_id", userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (businessError) {
+      throw businessError;
+    }
+
+    if (business) {
+      router.replace("/");
+    } else {
+      router.replace("/business/setup");
+    }
+
+    router.refresh();
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -35,26 +56,29 @@ export default function LoginPage() {
 
         if (error) throw error;
 
-        if (data.session) {
+        if (data.session && data.user) {
           setMessage("Your account has been created successfully.");
-          router.replace("/");
-          router.refresh();
+          await redirectUser(data.user.id);
         } else {
           setMessage(
             "Registration successful! Please check your email and click the verification link before logging in."
           );
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password
         });
 
         if (error) throw error;
 
+        if (!data.user) {
+          throw new Error("Unable to retrieve your account details. Please try again.");
+        }
+
         setMessage("Login successful. Welcome to MALIKEEP!");
-        router.replace("/");
-        router.refresh();
+
+        await redirectUser(data.user.id);
       }
     } catch (err: unknown) {
       setError(

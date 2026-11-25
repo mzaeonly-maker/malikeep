@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
@@ -9,6 +9,7 @@ export default function BusinessSetupPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -19,21 +20,68 @@ export default function BusinessSetupPage() {
     email: "",
     county: "",
     town: "",
-    address: ""
+    address: "",
   });
 
-  function updateField(
-    field: keyof typeof form,
-    value: string
-  ) {
+  useEffect(() => {
+    let active = true;
+
+    async function checkExistingBusiness() {
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          router.replace("/login");
+          return;
+        }
+
+        const { data: business, error: businessError } = await supabase
+          .from("businesses")
+          .select("id")
+          .eq("owner_id", user.id)
+          .maybeSingle();
+
+        if (businessError) throw businessError;
+
+        if (business) {
+          router.replace("/");
+          router.refresh();
+          return;
+        }
+      } catch (err) {
+        if (active) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Could not verify your business account."
+          );
+        }
+      } finally {
+        if (active) setChecking(false);
+      }
+    }
+
+    checkExistingBusiness();
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  function updateField(field: keyof typeof form, value: string) {
     setForm((current) => ({
       ...current,
-      [field]: value
+      [field]: value,
     }));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (loading || checking) return;
 
     setError("");
     setSuccess("");
@@ -46,16 +94,31 @@ export default function BusinessSetupPage() {
     setLoading(true);
 
     try {
-      const { data: { user }, error: authError } =
-        await supabase.auth.getUser();
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
       if (authError || !user) {
-        setError("Your session has expired. Please log in again.");
-        setLoading(false);
+        throw new Error("Your session has expired. Please log in again.");
+      }
+
+      // Check again before inserting to prevent duplicate submissions.
+      const { data: existingBusiness, error: checkError } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
+      if (existingBusiness) {
+        router.replace("/");
+        router.refresh();
         return;
       }
 
-      const { error: saveError } = await supabase
+      const { data: savedBusiness, error: saveError } = await supabase
         .from("businesses")
         .insert({
           owner_id: user.id,
@@ -66,20 +129,45 @@ export default function BusinessSetupPage() {
           county: form.county.trim() || null,
           town: form.town.trim() || null,
           address: form.address.trim() || null,
-          currency: "KES"
-        });
+          currency: "KES",
+        })
+        .select("id, business_name, owner_id")
+        .single();
 
       if (saveError) {
+        if (saveError.code === "23505") {
+          throw new Error(
+            "This account already has a business profile. Please refresh the page."
+          );
+        }
+
         throw saveError;
+      }
+
+      if (!savedBusiness || savedBusiness.owner_id !== user.id) {
+        throw new Error(
+          "Business saving could not be verified. Please contact support."
+        );
+      }
+
+      // Confirm that the saved record can be retrieved.
+      const { data: verifiedBusiness, error: verifyError } = await supabase
+        .from("businesses")
+        .select("id, owner_id")
+        .eq("id", savedBusiness.id)
+        .eq("owner_id", user.id)
+        .single();
+
+      if (verifyError || !verifiedBusiness) {
+        throw new Error(
+          "Your business was submitted but could not be verified. Please try again."
+        );
       }
 
       setSuccess("Your business has been saved successfully!");
 
-      setTimeout(() => {
-        router.push("/");
-        router.refresh();
-      }, 1200);
-
+      router.replace("/");
+      router.refresh();
     } catch (err) {
       setError(
         err instanceof Error
@@ -99,7 +187,7 @@ export default function BusinessSetupPage() {
     marginTop: "7px",
     boxSizing: "border-box" as const,
     background: "#ffffff",
-    color: "#17251c"
+    color: "#17251c",
   };
 
   const labelStyle = {
@@ -107,38 +195,63 @@ export default function BusinessSetupPage() {
     fontWeight: 600,
     fontSize: "14px",
     color: "#263b2e",
-    marginBottom: "17px"
+    marginBottom: "17px",
   };
 
+  if (checking) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          background: "#f3f7f3",
+          color: "#164a32",
+          fontFamily: "Arial, sans-serif",
+        }}
+      >
+        Checking your business account...
+      </main>
+    );
+  }
+
   return (
-    <main style={{
-      minHeight: "100vh",
-      background: "#f3f7f3",
-      padding: "35px 16px",
-      fontFamily: "Arial, sans-serif"
-    }}>
-      <div style={{
-        maxWidth: "650px",
-        margin: "0 auto",
-        background: "#ffffff",
-        borderRadius: "16px",
-        padding: "30px",
-        boxShadow: "0 5px 25px rgba(0,0,0,0.06)"
-      }}>
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "#f3f7f3",
+        padding: "35px 16px",
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: "650px",
+          margin: "0 auto",
+          background: "#ffffff",
+          borderRadius: "16px",
+          padding: "30px",
+          boxShadow: "0 5px 25px rgba(0,0,0,0.06)",
+        }}
+      >
         <div style={{ textAlign: "center", marginBottom: "28px" }}>
-          <h1 style={{
-            color: "#164a32",
-            fontSize: "30px",
-            margin: "0 0 8px"
-          }}>
+          <h1
+            style={{
+              color: "#164a32",
+              fontSize: "30px",
+              margin: "0 0 8px",
+            }}
+          >
             MALIKEEP
           </h1>
 
-          <h2 style={{
-            fontSize: "22px",
-            color: "#24382b",
-            margin: "0 0 10px"
-          }}>
+          <h2
+            style={{
+              fontSize: "22px",
+              color: "#24382b",
+              margin: "0 0 10px",
+            }}
+          >
             Set Up Your Business
           </h2>
 
@@ -153,9 +266,12 @@ export default function BusinessSetupPage() {
             <input
               style={inputStyle}
               value={form.business_name}
-              onChange={(e) => updateField("business_name", e.target.value)}
+              onChange={(e) =>
+                updateField("business_name", e.target.value)
+              }
               placeholder="e.g. Ongara General Stores"
               required
+              disabled={loading}
             />
           </label>
 
@@ -164,8 +280,11 @@ export default function BusinessSetupPage() {
             <select
               style={inputStyle}
               value={form.business_type}
-              onChange={(e) => updateField("business_type", e.target.value)}
+              onChange={(e) =>
+                updateField("business_type", e.target.value)
+              }
               required
+              disabled={loading}
             >
               <option value="">Select business type</option>
               <option value="Retail Shop">Retail Shop</option>
@@ -189,6 +308,7 @@ export default function BusinessSetupPage() {
               onChange={(e) => updateField("phone", e.target.value)}
               placeholder="e.g. 07XXXXXXXX"
               type="tel"
+              disabled={loading}
             />
           </label>
 
@@ -200,6 +320,7 @@ export default function BusinessSetupPage() {
               onChange={(e) => updateField("email", e.target.value)}
               placeholder="business@example.com"
               type="email"
+              disabled={loading}
             />
           </label>
 
@@ -210,6 +331,7 @@ export default function BusinessSetupPage() {
               value={form.county}
               onChange={(e) => updateField("county", e.target.value)}
               placeholder="e.g. Homa Bay"
+              disabled={loading}
             />
           </label>
 
@@ -220,6 +342,7 @@ export default function BusinessSetupPage() {
               value={form.town}
               onChange={(e) => updateField("town", e.target.value)}
               placeholder="Enter your town"
+              disabled={loading}
             />
           </label>
 
@@ -230,17 +353,20 @@ export default function BusinessSetupPage() {
               value={form.address}
               onChange={(e) => updateField("address", e.target.value)}
               placeholder="Enter your business location"
+              disabled={loading}
             />
           </label>
 
-          <div style={{
-            background: "#e8f1ea",
-            padding: "13px",
-            borderRadius: "9px",
-            marginBottom: "20px",
-            color: "#164a32",
-            fontSize: "14px"
-          }}>
+          <div
+            style={{
+              background: "#e8f1ea",
+              padding: "13px",
+              borderRadius: "9px",
+              marginBottom: "20px",
+              color: "#164a32",
+              fontSize: "14px",
+            }}
+          >
             Default currency: <strong>Kenyan Shilling (KES)</strong>
           </div>
 
@@ -258,7 +384,7 @@ export default function BusinessSetupPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || checking}
             style={{
               width: "100%",
               padding: "15px",
@@ -268,7 +394,7 @@ export default function BusinessSetupPage() {
               borderRadius: "9px",
               fontSize: "16px",
               fontWeight: 700,
-              cursor: loading ? "not-allowed" : "pointer"
+              cursor: loading ? "not-allowed" : "pointer",
             }}
           >
             {loading ? "Saving Business..." : "Save Business Details"}

@@ -1,14 +1,17 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ShoppingCart, Plus, Trash2, Receipt, RefreshCw,
   Wallet, Package, CheckCircle2, Users, CreditCard,
-  Banknote, Smartphone
+  Banknote, Smartphone, Crown
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
+
+type Plan = "free" | "pro" | "business";
 
 type Product = {
   id: string;
@@ -71,6 +74,12 @@ type PaymentCategory = {
 
 type PaymentMethod = "cash" | "mpesa" | "bank" | "card" | "credit";
 
+const salesLimits: Record<Plan, number | null> = {
+  free: 100,
+  pro: 1000,
+  business: null
+};
+
 const money = (amount: number) =>
   new Intl.NumberFormat("en-KE", {
     style: "currency",
@@ -108,6 +117,10 @@ export default function SalesPage() {
   const [recentPayments, setRecentPayments] = useState<PaymentEvent[]>([]);
   const [paymentCategories, setPaymentCategories] = useState<PaymentCategory[]>([]);
 
+  const [plan, setPlan] = useState<Plan>("free");
+  const [salesThisMonth, setSalesThisMonth] = useState<number | null>(null);
+  const [usageError, setUsageError] = useState("");
+
   const [selectedProduct, setSelectedProduct] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [selectedCustomer, setSelectedCustomer] = useState("");
@@ -122,11 +135,10 @@ export default function SalesPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
 
-    // AUTHENTICATION CHECK
     const {
       data: { user },
       error: authError
@@ -137,7 +149,6 @@ export default function SalesPage() {
       return;
     }
 
-    // LOAD ONLY THE LOGGED-IN USER'S BUSINESS
     const { data: businessRows, error: businessError } =
       await supabase
         .from("businesses")
@@ -162,12 +173,23 @@ export default function SalesPage() {
     setBusinessId(business.id);
     setBusinessName(business.business_name);
 
+    // Match the database monthly sales period using calendar-month boundaries.
+    const now = new Date();
+    const monthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+    ).toISOString();
+    const nextMonthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
+    ).toISOString();
+
     const [
       productResult,
       salesResult,
       customerResult,
       paymentSalesResult,
-      customerPaymentsResult
+      customerPaymentsResult,
+      subscriptionResult,
+      monthlySalesResult
     ] = await Promise.all([
       supabase
         .from("products")
@@ -200,7 +222,20 @@ export default function SalesPage() {
         .from("customer_payments")
         .select("id, sale_id, amount, payment_method, reference, notes, created_at")
         .eq("business_id", business.id)
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: false }),
+
+      supabase
+        .from("business_subscriptions")
+        .select("plan")
+        .eq("business_id", business.id)
+        .maybeSingle(),
+
+      supabase
+        .from("sales")
+        .select("id", { count: "exact", head: true })
+        .eq("business_id", business.id)
+        .gte("created_at", monthStart)
+        .lt("created_at", nextMonthStart)
     ]);
 
     if (productResult.error) {
@@ -219,6 +254,37 @@ export default function SalesPage() {
       setError(customerResult.error.message);
     } else {
       setCustomers((customerResult.data || []) as Customer[]);
+    }
+
+    if (subscriptionResult.error) {
+      setUsageError(
+        "Unable to load subscription details. The database will still enforce your plan limits."
+      );
+    } else {
+      setUsageError("");
+
+      const savedPlan = subscriptionResult.data?.plan;
+
+      if (
+        savedPlan === "free" ||
+        savedPlan === "pro" ||
+        savedPlan === "business"
+      ) {
+        setPlan(savedPlan);
+      } else {
+        setPlan("free");
+      }
+    }
+
+    if (monthlySalesResult.error) {
+      setSalesThisMonth(null);
+      setUsageError((current) =>
+        current
+          ? `${current} Monthly sales usage could not be loaded.`
+          : "Monthly sales usage could not be loaded. The database will still enforce your plan limits."
+      );
+    } else {
+      setSalesThisMonth(monthlySalesResult.count ?? 0);
     }
 
     if (paymentSalesResult.error) {
@@ -241,7 +307,6 @@ export default function SalesPage() {
     const customerPayments =
       (customerPaymentsResult.data || []) as CustomerPayment[];
 
-    // Separate later repayments from original sale payments.
     const repaymentTotals = new Map<string, number>();
 
     customerPayments.forEach((payment) => {
@@ -318,11 +383,11 @@ export default function SalesPage() {
     );
 
     setLoading(false);
-  }
+  }, [router]);
 
   useEffect(() => {
     loadData();
-  }, [router]);
+  }, [loadData]);
 
   const cartDetails = useMemo(() => {
     return cart.map((item) => {
@@ -355,6 +420,18 @@ export default function SalesPage() {
     (sum, category) => sum + category.amount,
     0
   );
+
+  const salesLimit = salesLimits[plan];
+
+  const limitReached =
+    salesLimit !== null &&
+    salesThisMonth !== null &&
+    salesThisMonth >= salesLimit;
+
+  const usagePercentage =
+    salesLimit === null || salesThisMonth === null
+      ? 0
+      : Math.min((salesThisMonth / salesLimit) * 100, 100);
 
   function handleCustomerChange(customerId: string) {
     setSelectedCustomer(customerId);
@@ -474,6 +551,13 @@ export default function SalesPage() {
       return;
     }
 
+    if (limitReached && !usageError) {
+      setError(
+        `Your ${plan} plan allows a maximum of ${salesLimit} sales per month. Upgrade your plan to continue.`
+      );
+      return;
+    }
+
     if (cart.length === 0) {
       setError("Add at least one product to the sale.");
       return;
@@ -524,7 +608,19 @@ export default function SalesPage() {
     );
 
     if (saleError) {
-      setError(saleError.message);
+      const limitMatch = saleError.message.match(
+        /Your\s+(free|pro|business)\s+plan allows a maximum of\s+(\d+)\s+sales per month/i
+      );
+
+      if (limitMatch) {
+        setError(
+          `Your ${limitMatch[1]} plan allows a maximum of ${limitMatch[2]} sales per month. Upgrade your plan to continue.`
+        );
+        setSalesThisMonth(Number(limitMatch[2]));
+      } else {
+        setError(saleError.message);
+      }
+
       setSaving(false);
       return;
     }
@@ -586,10 +682,106 @@ export default function SalesPage() {
           </button>
         </header>
 
+        {/* SUBSCRIPTION USAGE */}
+        <section className="w-full min-w-0 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Crown className="text-green-700" size={20} />
+                <h2 className="font-bold text-gray-900">
+                  Monthly Sales Usage
+                </h2>
+              </div>
+
+              <p className="mt-2 text-sm text-gray-500">
+                Current Plan
+              </p>
+
+              <p className="text-xl font-bold capitalize text-green-700">
+                {usageError ? "Plan / usage unavailable" : plan}
+              </p>
+            </div>
+
+            <Link
+              href="/subscription"
+              className="rounded-lg bg-green-700 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-green-800"
+            >
+              View Plans & Upgrade
+            </Link>
+          </div>
+
+          <div className="mt-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-gray-700">
+                Sales Recorded This Month
+              </p>
+
+              <p className="text-sm font-bold text-gray-900">
+                {salesThisMonth === null
+                  ? "Unavailable"
+                  : `${salesThisMonth} / ${
+                      salesLimit === null ? "Unlimited" : salesLimit
+                    }`}
+              </p>
+            </div>
+
+            {salesLimit !== null && salesThisMonth !== null && (
+              <div className="mt-2 h-3 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    limitReached ? "bg-red-600" : "bg-green-600"
+                  }`}
+                  style={{ width: `${usagePercentage}%` }}
+                />
+              </div>
+            )}
+
+            {salesLimit === null && (
+              <p className="mt-2 text-sm font-medium text-green-700">
+                Your Business plan has unlimited sales.
+              </p>
+            )}
+          </div>
+
+          {usageError && (
+            <p className="mt-3 rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">
+              {usageError} You can still attempt a sale; the database will enforce the limit.
+            </p>
+          )}
+
+          {limitReached && (
+            <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50 p-4">
+              <p className="font-semibold text-orange-800">
+                Monthly sales limit reached
+              </p>
+              <p className="mt-1 text-sm text-orange-700">
+                Your {plan} plan allows up to {salesLimit} sales per calendar month.
+                Upgrade your subscription to record additional sales.
+              </p>
+              <Link
+                href="/subscription"
+                className="mt-3 inline-block font-semibold text-green-800 underline"
+              >
+                Upgrade your plan
+              </Link>
+            </div>
+          )}
+        </section>
+
         {/* MESSAGES */}
         {error && (
           <div className="w-full min-w-0 break-words rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700">
             {error}
+            {error.toLowerCase().includes("upgrade") && (
+              <div className="mt-2">
+                <Link
+                  href="/subscription"
+                  className="font-semibold underline"
+                >
+                  View subscription plans
+                </Link>
+              </div>
+            )}
           </div>
         )}
 
@@ -697,7 +889,6 @@ export default function SalesPage() {
                 </div>
               ) : (
                 <>
-                  {/* MOBILE CART CARDS */}
                   <div className="space-y-3 md:hidden">
                     {cartDetails.map((item) => (
                       <div
@@ -766,7 +957,6 @@ export default function SalesPage() {
                     ))}
                   </div>
 
-                  {/* DESKTOP CART TABLE */}
                   <div className="hidden max-w-full overflow-x-auto md:block">
                     <table className="w-full min-w-[600px] text-left text-sm">
                       <thead>
@@ -958,7 +1148,6 @@ export default function SalesPage() {
                 />
               </div>
 
-              {/* PAYMENT SUMMARY */}
               <div className="w-full min-w-0 space-y-3 rounded-lg bg-gray-50 p-3 sm:p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span className="text-gray-600">Sale Total</span>
@@ -982,12 +1171,30 @@ export default function SalesPage() {
 
               <button
                 type="submit"
-                disabled={saving || cart.length === 0 || total <= 0}
+                disabled={
+                  saving ||
+                  cart.length === 0 ||
+                  total <= 0 ||
+                  (limitReached && !usageError)
+                }
                 className="flex min-h-14 w-full items-center justify-center gap-2 rounded-lg bg-green-700 px-4 py-4 text-center font-semibold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Receipt size={19} />
-                {saving ? "Recording Sale..." : "Complete Sale"}
+                {saving
+                  ? "Recording Sale..."
+                  : limitReached && !usageError
+                    ? "Monthly Sales Limit Reached"
+                    : "Complete Sale"}
               </button>
+
+              {limitReached && (
+                <Link
+                  href="/subscription"
+                  className="block text-center text-sm font-semibold text-green-700 underline"
+                >
+                  Upgrade your plan to record more sales
+                </Link>
+              )}
             </form>
           </section>
 

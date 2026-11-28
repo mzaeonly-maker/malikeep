@@ -14,6 +14,12 @@ type Subscription = {
   current_period_end: string | null;
 };
 
+type Usage = {
+  products: number;
+  customers: number;
+  sales: number;
+};
+
 const plans = [
   {
     id: "free" as Plan,
@@ -21,12 +27,13 @@ const plans = [
     price: 0,
     description: "Essential tools to get your business started.",
     features: [
+      "1 business account",
+      "Up to 50 products",
+      "Up to 100 sales per month",
+      "Up to 50 customers",
       "Business dashboard",
-      "Sales recording",
-      "Product management",
-      "Customer records",
-      "Expense tracking",
       "Basic reports",
+      "Sales and expense tracking",
     ],
   },
   {
@@ -36,33 +43,69 @@ const plans = [
     description: "More control and insight as your business grows.",
     features: [
       "Everything in Free",
-      "Advanced business reports",
+      "Up to 500 products",
+      "Up to 1,000 sales per month",
+      "Up to 500 customers",
       "Inventory management",
-      "Customer debt tracking",
-      "Payment history",
-      "Priority support",
+      "Stock movement history",
+      "Customer debts and payments",
+      "Advanced reports",
     ],
   },
   {
     id: "business" as Plan,
     name: "Business",
     price: 499,
-    description: "More tools for growing and managing your business.",
+    description: "For established and expanding businesses.",
     features: [
       "Everything in Pro",
+      "Unlimited products",
+      "Unlimited sales",
+      "Unlimited customers",
       "Advanced business insights",
-      "Expanded business management tools",
-      "Enhanced reporting",
-      "Business growth tools",
-      "Priority business support",
+      "Expanded reporting",
+      "Priority support",
     ],
   },
 ];
 
+const limits: Record<Plan, Usage> = {
+  free: {
+    products: 50,
+    customers: 50,
+    sales: 100,
+  },
+  pro: {
+    products: 500,
+    customers: 500,
+    sales: 1000,
+  },
+  business: {
+    products: Infinity,
+    customers: Infinity,
+    sales: Infinity,
+  },
+};
+
+const panelStyle: React.CSSProperties = {
+  background: "white",
+  border: "1px solid #e1e9e3",
+  borderRadius: 13,
+  padding: 21,
+  marginBottom: 20,
+};
+
 export default function SubscriptionPage() {
   const [subscription, setSubscription] =
     useState<Subscription | null>(null);
+
   const [businessName, setBusinessName] = useState("");
+  const [usage, setUsage] = useState<Usage>({
+    products: 0,
+    customers: 0,
+    sales: 0,
+  });
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -112,9 +155,57 @@ export default function SubscriptionPage() {
           );
         }
 
+        const now = new Date();
+        const monthStart = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          1
+        );
+        const nextMonth = new Date(
+          now.getFullYear(),
+          now.getMonth() + 1,
+          1
+        );
+
+        const [
+          productsResult,
+          customersResult,
+          salesResult,
+        ] = await Promise.all([
+          supabase
+            .from("products")
+            .select("id", { count: "exact", head: true })
+            .eq("business_id", business.id),
+
+          supabase
+            .from("customers")
+            .select("id", { count: "exact", head: true })
+            .eq("business_id", business.id),
+
+          supabase
+            .from("sales")
+            .select("id", { count: "exact", head: true })
+            .eq("business_id", business.id)
+            .gte("created_at", monthStart.toISOString())
+            .lt("created_at", nextMonth.toISOString()),
+        ]);
+
+        if (productsResult.error) throw productsResult.error;
+        if (customersResult.error) throw customersResult.error;
+        if (salesResult.error) throw salesResult.error;
+
         if (active) {
           setBusinessName(business.business_name);
-          setSubscription(currentSubscription as Subscription);
+
+          setSubscription(
+            currentSubscription as Subscription
+          );
+
+          setUsage({
+            products: productsResult.count ?? 0,
+            customers: customersResult.count ?? 0,
+            sales: salesResult.count ?? 0,
+          });
         }
       } catch (err) {
         if (active) {
@@ -136,7 +227,53 @@ export default function SubscriptionPage() {
     };
   }, []);
 
-  const currentPlan = subscription?.plan ?? "free";
+  const now = new Date();
+
+  const subscriptionIsValid =
+    subscription?.status === "active" &&
+    (
+      !subscription.current_period_end ||
+      new Date(subscription.current_period_end) > now
+    );
+
+  const currentPlan: Plan =
+    subscriptionIsValid &&
+    ["free", "pro", "business"].includes(subscription?.plan ?? "")
+      ? subscription!.plan
+      : "free";
+
+  const currentLimits = limits[currentPlan];
+
+  const usageItems = [
+    {
+      name: "Products",
+      value: usage.products,
+      limit: currentLimits.products,
+    },
+    {
+      name: "Customers",
+      value: usage.customers,
+      limit: currentLimits.customers,
+    },
+    {
+      name: "Sales this month",
+      value: usage.sales,
+      limit: currentLimits.sales,
+    },
+  ];
+
+  function usagePercentage(value: number, limit: number) {
+    if (!Number.isFinite(limit)) return 0;
+    if (limit === 0) return 0;
+
+    return Math.min((value / limit) * 100, 100);
+  }
+
+  function usageLabel(value: number, limit: number) {
+    return Number.isFinite(limit)
+      ? `${value.toLocaleString("en-KE")} / ${limit.toLocaleString("en-KE")}`
+      : `${value.toLocaleString("en-KE")} / Unlimited`;
+  }
 
   return (
     <main
@@ -152,7 +289,7 @@ export default function SubscriptionPage() {
           style={{
             background: "#103522",
             color: "white",
-            padding: "22px",
+            padding: 22,
             borderRadius: 14,
             marginBottom: 28,
           }}
@@ -160,6 +297,7 @@ export default function SubscriptionPage() {
           <h1 style={{ fontSize: 25, fontWeight: 800 }}>
             MALI<span style={{ color: "#9bc9a8" }}>KEEP</span>
           </h1>
+
           <p style={{ color: "#d0e0d5", fontSize: 13 }}>
             Know Your Business. Grow Your Business.
           </p>
@@ -183,13 +321,13 @@ export default function SubscriptionPage() {
           </h2>
 
           <p style={{ color: "#718078", marginTop: 7 }}>
-            Manage your MALIKEEP membership and explore available plans.
+            Manage your MALIKEEP membership and monitor your usage.
           </p>
         </div>
 
         {loading ? (
           <div style={panelStyle}>
-            Loading your subscription...
+            Loading your subscription and usage...
           </div>
         ) : error ? (
           <div
@@ -217,13 +355,14 @@ export default function SubscriptionPage() {
                   display: "flex",
                   justifyContent: "space-between",
                   flexWrap: "wrap",
-                  gap: 12,
+                  gap: 15,
                 }}
               >
                 <div>
                   <p style={{ color: "#718078", fontSize: 12 }}>
                     CURRENT PLAN
                   </p>
+
                   <strong style={{ fontSize: 20 }}>
                     {plans.find((p) => p.id === currentPlan)?.name}
                   </strong>
@@ -233,19 +372,156 @@ export default function SubscriptionPage() {
                   <p style={{ color: "#718078", fontSize: 12 }}>
                     SUBSCRIPTION STATUS
                   </p>
-                  <strong style={{ color: "#23834d" }}>
-                    {subscription?.status.toUpperCase()}
+
+                  <strong
+                    style={{
+                      color: subscriptionIsValid ? "#23834d" : "#a12d2d",
+                    }}
+                  >
+                    {subscriptionIsValid ? "ACTIVE" : "EXPIRED / INACTIVE"}
                   </strong>
                 </div>
               </div>
 
               {subscription?.current_period_end && (
-                <p style={{ fontSize: 12, color: "#718078", marginTop: 14 }}>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "#718078",
+                    marginTop: 14,
+                  }}
+                >
                   Current period ends:{" "}
                   {new Date(
                     subscription.current_period_end
-                  ).toLocaleDateString()}
+                  ).toLocaleDateString("en-KE")}
                 </p>
+              )}
+            </section>
+
+            <section style={panelStyle}>
+              <h2 style={{ fontSize: 21, marginBottom: 7 }}>
+                Your Business Usage
+              </h2>
+
+              <p
+                style={{
+                  color: "#718078",
+                  fontSize: 13,
+                  marginBottom: 22,
+                }}
+              >
+                Your usage compared with your current plan limits.
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+                  gap: 20,
+                }}
+              >
+                {usageItems.map((item) => {
+                  const percentage = usagePercentage(
+                    item.value,
+                    item.limit
+                  );
+
+                  const reached =
+                    Number.isFinite(item.limit) &&
+                    item.value >= item.limit;
+
+                  return (
+                    <div
+                      key={item.name}
+                      style={{
+                        background: "#f7faf7",
+                        border: "1px solid #e5ede6",
+                        borderRadius: 11,
+                        padding: 16,
+                      }}
+                    >
+                      <p
+                        style={{
+                          fontSize: 13,
+                          color: "#718078",
+                          marginBottom: 9,
+                        }}
+                      >
+                        {item.name}
+                      </p>
+
+                      <strong
+                        style={{
+                          fontSize: 22,
+                          color: reached ? "#b33b32" : "#183b29",
+                        }}
+                      >
+                        {usageLabel(item.value, item.limit)}
+                      </strong>
+
+                      <div
+                        style={{
+                          height: 9,
+                          background: "#e5ece6",
+                          borderRadius: 20,
+                          overflow: "hidden",
+                          marginTop: 13,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: `${percentage}%`,
+                            height: "100%",
+                            background: reached ? "#c94b42" : "#31945a",
+                            borderRadius: 20,
+                          }}
+                        />
+                      </div>
+
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color: reached ? "#b33b32" : "#718078",
+                          marginTop: 9,
+                        }}
+                      >
+                        {!Number.isFinite(item.limit)
+                          ? "No usage limit"
+                          : reached
+                            ? "Plan limit reached"
+                            : `${Math.max(
+                                item.limit - item.value,
+                                0
+                              ).toLocaleString("en-KE")} remaining`}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {usageItems.some(
+                (item) =>
+                  Number.isFinite(item.limit) &&
+                  item.value >= item.limit
+              ) && (
+                <div
+                  style={{
+                    background: "#fff5e9",
+                    color: "#87531d",
+                    padding: 14,
+                    borderRadius: 9,
+                    marginTop: 20,
+                    fontSize: 13,
+                    lineHeight: 1.7,
+                  }}
+                >
+                  <strong>You've reached a plan limit.</strong>
+                  <p>
+                    Upgrade your subscription to increase your available
+                    business capacity.
+                  </p>
+                </div>
               )}
             </section>
 
@@ -301,6 +577,7 @@ export default function SubscriptionPage() {
                       <strong style={{ fontSize: 29 }}>
                         KES {plan.price.toLocaleString("en-KE")}
                       </strong>
+
                       <span style={{ color: "#718078", fontSize: 12 }}>
                         {" "}/ month
                       </span>
@@ -377,10 +654,11 @@ export default function SubscriptionPage() {
               <strong style={{ color: "#183b29" }}>
                 Secure M-Pesa payments
               </strong>
+
               <p>
-                Paid plan upgrades will become available after the
-                secure M-Pesa payment system is connected and payment
-                confirmation is verified.
+                Paid plan upgrades will become available after the secure
+                M-Pesa payment system is connected and payment confirmation
+                is verified.
               </p>
             </section>
           </>
@@ -389,11 +667,3 @@ export default function SubscriptionPage() {
     </main>
   );
 }
-
-const panelStyle = {
-  background: "white",
-  border: "1px solid #e1e9e3",
-  borderRadius: 13,
-  padding: 21,
-  marginBottom: 20,
-};

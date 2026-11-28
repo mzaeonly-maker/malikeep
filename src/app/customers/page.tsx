@@ -3,15 +3,19 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Users,
   UserPlus,
   RefreshCw,
   Wallet,
   Receipt,
-  CheckCircle2
+  CheckCircle2,
+  Crown
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
+
+type Plan = "free" | "pro" | "business";
 
 type Customer = {
   id: string;
@@ -54,6 +58,12 @@ const money = (amount: number) =>
     currency: "KES"
   }).format(amount);
 
+const customerLimits: Record<Plan, number | null> = {
+  free: 50,
+  pro: 500,
+  business: null
+};
+
 export default function CustomersPage() {
   const router = useRouter();
 
@@ -61,6 +71,9 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [debts, setDebts] = useState<DebtSale[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+
+  const [plan, setPlan] = useState<Plan>("free");
+  const [subscriptionError, setSubscriptionError] = useState("");
 
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
@@ -117,29 +130,39 @@ export default function CustomersPage() {
     const id = businesses[0].id;
     setBusinessId(id);
 
-    const [customerResult, debtResult, paymentResult] =
-      await Promise.all([
-        supabase
-          .from("customers")
-          .select("*")
-          .eq("business_id", id)
-          .order("customer_name"),
+    const [
+      customerResult,
+      debtResult,
+      paymentResult,
+      subscriptionResult
+    ] = await Promise.all([
+      supabase
+        .from("customers")
+        .select("*")
+        .eq("business_id", id)
+        .order("customer_name"),
 
-        supabase
-          .from("sales")
-          .select("*")
-          .eq("business_id", id)
-          .gt("balance", 0)
-          .not("customer_name", "is", null)
-          .order("created_at", { ascending: false }),
+      supabase
+        .from("sales")
+        .select("*")
+        .eq("business_id", id)
+        .gt("balance", 0)
+        .not("customer_name", "is", null)
+        .order("created_at", { ascending: false }),
 
-        supabase
-          .from("customer_payments")
-          .select("*")
-          .eq("business_id", id)
-          .order("created_at", { ascending: false })
-          .limit(20)
-      ]);
+      supabase
+        .from("customer_payments")
+        .select("*")
+        .eq("business_id", id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+
+      supabase
+        .from("business_subscriptions")
+        .select("plan")
+        .eq("business_id", id)
+        .maybeSingle()
+    ]);
 
     if (customerResult.error) {
       setError(customerResult.error.message);
@@ -157,6 +180,26 @@ export default function CustomersPage() {
       setError(paymentResult.error.message);
     } else {
       setPayments((paymentResult.data || []) as Payment[]);
+    }
+
+    if (subscriptionResult.error) {
+      setSubscriptionError(
+        "Unable to load subscription details. The database will still enforce your plan limits."
+      );
+    } else {
+      setSubscriptionError("");
+
+      const savedPlan = subscriptionResult.data?.plan;
+
+      if (
+        savedPlan === "free" ||
+        savedPlan === "pro" ||
+        savedPlan === "business"
+      ) {
+        setPlan(savedPlan);
+      } else {
+        setPlan("free");
+      }
     }
 
     setLoading(false);
@@ -182,6 +225,15 @@ export default function CustomersPage() {
       return;
     }
 
+    const limit = customerLimits[plan];
+
+    if (limit !== null && customers.length >= limit && !subscriptionError) {
+      setError(
+        `Your ${plan} plan allows a maximum of ${limit} customers. Please upgrade your plan to add more.`
+      );
+      return;
+    }
+
     setSavingCustomer(true);
 
     const { error: insertError } = await supabase
@@ -196,7 +248,18 @@ export default function CustomersPage() {
       });
 
     if (insertError) {
-      setError(insertError.message);
+      const limitMatch = insertError.message.match(
+        /Your\s+(free|pro|business)\s+plan allows a maximum of\s+(\d+)\s+customers/i
+      );
+
+      if (limitMatch) {
+        setError(
+          `Your ${limitMatch[1]} plan allows a maximum of ${limitMatch[2]} customers. Upgrade your plan to add more.`
+        );
+      } else {
+        setError(insertError.message);
+      }
+
       setSavingCustomer(false);
       return;
     }
@@ -288,6 +351,17 @@ export default function CustomersPage() {
     (sale) => sale.id === selectedSale
   );
 
+  const customerLimit = customerLimits[plan];
+
+  const limitReached =
+    customerLimit !== null &&
+    customers.length >= customerLimit;
+
+  const usagePercentage =
+    customerLimit === null
+      ? 0
+      : Math.min((customers.length / customerLimit) * 100, 100);
+
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50 p-8">
@@ -324,10 +398,105 @@ export default function CustomersPage() {
           </button>
         </header>
 
+        {/* SUBSCRIPTION USAGE */}
+        <section className="rounded-xl border bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Crown className="text-green-700" size={20} />
+                <h2 className="font-bold text-gray-900">
+                  Subscription Usage
+                </h2>
+              </div>
+
+              <p className="mt-2 text-sm text-gray-500">
+                Current Plan
+              </p>
+
+              <p className="text-xl font-bold capitalize text-green-700">
+                {subscriptionError ? "Plan unavailable" : plan}
+              </p>
+            </div>
+
+            <Link
+              href="/subscription"
+              className="rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800"
+            >
+              View Plans & Upgrade
+            </Link>
+          </div>
+
+          <div className="mt-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium text-gray-700">
+                Customers Added
+              </p>
+
+              <p className="text-sm font-bold text-gray-900">
+                {customers.length} /{" "}
+                {customerLimit === null
+                  ? "Unlimited"
+                  : customerLimit}
+              </p>
+            </div>
+
+            {customerLimit !== null && (
+              <div className="mt-2 h-3 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    limitReached ? "bg-red-600" : "bg-green-600"
+                  }`}
+                  style={{ width: `${usagePercentage}%` }}
+                />
+              </div>
+            )}
+
+            {customerLimit === null && (
+              <p className="mt-2 text-sm font-medium text-green-700">
+                Your Business plan has unlimited customer records.
+              </p>
+            )}
+          </div>
+
+          {subscriptionError && (
+            <p className="mt-3 rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">
+              {subscriptionError}
+            </p>
+          )}
+
+          {limitReached && !subscriptionError && (
+            <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50 p-4">
+              <p className="font-semibold text-orange-800">
+                Customer limit reached
+              </p>
+              <p className="mt-1 text-sm text-orange-700">
+                Your {plan} plan allows up to {customerLimit} customers.
+                Upgrade your subscription to register additional customers.
+              </p>
+              <Link
+                href="/subscription"
+                className="mt-3 inline-block font-semibold text-green-800 underline"
+              >
+                Upgrade your plan
+              </Link>
+            </div>
+          )}
+        </section>
+
         {/* ALERTS */}
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
+            {error.toLowerCase().includes("upgrade") && (
+              <div className="mt-2">
+                <Link
+                  href="/subscription"
+                  className="font-semibold underline"
+                >
+                  View subscription plans
+                </Link>
+              </div>
+            )}
           </div>
         )}
 
@@ -456,12 +625,28 @@ export default function CustomersPage() {
 
               <button
                 type="submit"
-                disabled={savingCustomer}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-700 px-4 py-3 font-semibold text-white hover:bg-green-800 disabled:opacity-50"
+                disabled={
+                  savingCustomer ||
+                  (limitReached && !subscriptionError)
+                }
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-700 px-4 py-3 font-semibold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <UserPlus size={18} />
-                {savingCustomer ? "Saving Customer..." : "Save Customer"}
+                {savingCustomer
+                  ? "Saving Customer..."
+                  : limitReached && !subscriptionError
+                    ? "Customer Limit Reached"
+                    : "Save Customer"}
               </button>
+
+              {limitReached && !subscriptionError && (
+                <Link
+                  href="/subscription"
+                  className="block text-center text-sm font-semibold text-green-700 underline"
+                >
+                  Upgrade to register more customers
+                </Link>
+              )}
             </form>
           </section>
 

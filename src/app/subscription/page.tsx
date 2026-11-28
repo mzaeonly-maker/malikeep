@@ -516,7 +516,7 @@ export default function SubscriptionPage() {
                     lineHeight: 1.7,
                   }}
                 >
-                  <strong>You've reached a plan limit.</strong>
+                  <strong>You&apos;ve reached a plan limit.</strong>
                   <p>
                     Upgrade your subscription to increase your available
                     business capacity.

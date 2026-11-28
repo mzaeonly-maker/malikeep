@@ -72,7 +72,6 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-
     const plan = body.plan as PaidPlan;
 
     if (!Object.prototype.hasOwnProperty.call(PLAN_PRICES, plan)) {
@@ -82,7 +81,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const phone = normalizePhone(String(body.phoneNumber ?? ""));
+    const phone = normalizePhone(
+      String(body.phoneNumber ?? "")
+    );
 
     const {
       data: business,
@@ -120,27 +121,24 @@ export async function POST(request: Request) {
       );
     }
 
-    if (
-      subscription.plan === "business" &&
+    const subscriptionStillActive =
       subscription.status === "active" &&
-      (!subscription.current_period_end ||
-        new Date(subscription.current_period_end) > new Date())
-    ) {
-      return NextResponse.json(
-        { error: "Your Business plan is already active." },
-        { status: 409 }
+      (
+        !subscription.current_period_end ||
+        new Date(subscription.current_period_end) > new Date()
       );
-    }
 
     if (
-      plan === "pro" &&
-      subscription.plan === "pro" &&
-      subscription.status === "active" &&
-      (!subscription.current_period_end ||
-        new Date(subscription.current_period_end) > new Date())
+      subscriptionStillActive &&
+      (
+        subscription.plan === "business" ||
+        subscription.plan === plan
+      )
     ) {
       return NextResponse.json(
-        { error: "Your Pro plan is already active." },
+        {
+          error: `Your ${subscription.plan} plan is already active.`,
+        },
         { status: 409 }
       );
     }
@@ -159,15 +157,24 @@ export async function POST(request: Request) {
       !passkey ||
       !callbackUrl
     ) {
-      throw new Error("M-Pesa server configuration is incomplete.");
+      throw new Error(
+        "M-Pesa server configuration is incomplete."
+      );
     }
 
-    if (environment !== "sandbox" && environment !== "production") {
-      throw new Error("Invalid M-Pesa environment configuration.");
+    if (
+      environment !== "sandbox" &&
+      environment !== "production"
+    ) {
+      throw new Error(
+        "Invalid M-Pesa environment configuration."
+      );
     }
 
     if (!callbackUrl.startsWith("https://")) {
-      throw new Error("The M-Pesa callback must use HTTPS.");
+      throw new Error(
+        "The M-Pesa callback must use HTTPS."
+      );
     }
 
     const baseUrl =
@@ -199,10 +206,15 @@ export async function POST(request: Request) {
     const tokenData = await tokenResponse.json();
 
     if (!tokenResponse.ok || !tokenData.access_token) {
-      console.error("Daraja token request failed:", tokenData);
+      console.error(
+        "Daraja token request failed:",
+        tokenData
+      );
 
       return NextResponse.json(
-        { error: "Unable to authenticate with M-Pesa." },
+        {
+          error: "Unable to authenticate with M-Pesa.",
+        },
         { status: 502 }
       );
     }
@@ -247,7 +259,10 @@ export async function POST(request: Request) {
           PhoneNumber: phone,
           CallBackURL: callbackUrl,
           AccountReference: "MALIKEEP",
-          TransactionDesc: `${plan.toUpperCase()} subscription`,
+          TransactionDesc:
+            plan === "pro"
+              ? "MALIKEEP PRO"
+              : "MALIKEEP BIZ",
         }),
         cache: "no-store",
       }
@@ -271,7 +286,10 @@ export async function POST(request: Request) {
         })
         .eq("id", payment.id);
 
-      console.error("STK Push request failed:", stkData);
+      console.error(
+        "STK Push request failed:",
+        stkData
+      );
 
       return NextResponse.json(
         {
@@ -288,16 +306,21 @@ export async function POST(request: Request) {
       .from("subscription_payments")
       .update({
         checkout_request_id: stkData.CheckoutRequestID,
-        merchant_request_id: stkData.MerchantRequestID ?? null,
+        merchant_request_id:
+          stkData.MerchantRequestID ?? null,
       })
       .eq("id", payment.id);
 
     if (updateError) {
-      console.error("Unable to save STK request IDs:", updateError);
+      console.error(
+        "Unable to save STK request IDs:",
+        updateError
+      );
 
       return NextResponse.json(
         {
-          error: "Payment request was sent but could not be fully recorded. Contact support before retrying.",
+          error:
+            "Payment request was sent but could not be fully recorded. Contact support before retrying.",
         },
         { status: 500 }
       );

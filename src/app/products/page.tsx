@@ -3,6 +3,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
 
 type Business = {
@@ -22,16 +23,29 @@ type Product = {
   low_stock_threshold: number | string;
 };
 
+type Plan = "free" | "pro" | "business";
+
+type Subscription = {
+  plan: Plan;
+  status: string;
+  current_period_end: string | null;
+};
+
 export default function ProductsPage() {
   const router = useRouter();
 
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [businessId, setBusinessId] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
+  const [plan, setPlan] = useState<Plan>("free");
+
   const [loading, setLoading] = useState(true);
+  const [productsLoading, setProductsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [limitError, setLimitError] = useState(false);
 
   const [form, setForm] = useState({
     product_name: "",
@@ -43,6 +57,14 @@ export default function ProductsPage() {
     quantity: "0",
     low_stock_threshold: "5"
   });
+
+  const productLimit =
+    plan === "free" ? 50 :
+    plan === "pro" ? 500 :
+    null;
+
+  const isAtLimit =
+    productLimit !== null && products.length >= productLimit;
 
   useEffect(() => {
     async function loadBusinesses() {
@@ -87,36 +109,99 @@ export default function ProductsPage() {
   }, [router]);
 
   useEffect(() => {
-    async function loadProducts() {
+    let cancelled = false;
+
+    async function loadProductsAndPlan() {
       if (!businessId) {
         setProducts([]);
+        setPlan("free");
         return;
       }
 
-      const { data, error: productError } = await supabase
-        .from("products")
-        .select("*")
-        .eq("business_id", businessId)
-        .order("product_name", { ascending: true });
+      setProductsLoading(true);
+      setError("");
+      setMessage("");
+      setLimitError(false);
 
-      if (productError) {
-        setError(productError.message);
+      const [productResult, subscriptionResult] = await Promise.all([
+        supabase
+          .from("products")
+          .select("*")
+          .eq("business_id", businessId)
+          .order("product_name", { ascending: true }),
+
+        supabase
+          .from("business_subscriptions")
+          .select("plan, status, current_period_end")
+          .eq("business_id", businessId)
+          .maybeSingle()
+      ]);
+
+      if (cancelled) return;
+
+      if (productResult.error) {
+        setError(productResult.error.message);
+        setProductsLoading(false);
         return;
       }
 
-      setProducts((data || []) as Product[]);
+      setProducts((productResult.data || []) as Product[]);
+
+      if (subscriptionResult.error) {
+        setError(
+          "Unable to load your subscription details. Your database limits remain protected."
+        );
+        setPlan("free");
+      } else {
+        const subscription =
+          subscriptionResult.data as Subscription | null;
+
+        const subscriptionIsValid =
+          subscription?.status === "active" &&
+          (
+            !subscription.current_period_end ||
+            new Date(subscription.current_period_end).getTime() > Date.now()
+          );
+
+        const currentPlan: Plan =
+          subscriptionIsValid &&
+          (
+            subscription.plan === "pro" ||
+            subscription.plan === "business"
+          )
+            ? subscription.plan
+            : "free";
+
+        setPlan(currentPlan);
+      }
+
+      setProductsLoading(false);
     }
 
-    loadProducts();
+    loadProductsAndPlan();
+
+    return () => {
+      cancelled = true;
+    };
   }, [businessId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     setError("");
     setMessage("");
+    setLimitError(false);
 
     if (!businessId) {
       setError("Please select a business first.");
+      return;
+    }
+
+    if (productLimit !== null && products.length >= productLimit) {
+      setLimitError(true);
+      setError(
+        `You've reached the ${productLimit}-product limit on the ${plan.toUpperCase()} plan.`
+      );
       return;
     }
 
@@ -159,7 +244,22 @@ export default function ProductsPage() {
       });
 
     if (saveError) {
-      setError(saveError.message);
+      const limitMatch = saveError.message.match(
+        /Your\s+(free|pro)\s+plan allows a maximum of\s+(\d+)\s+products/i
+      );
+
+      if (limitMatch) {
+        const rejectedPlan = limitMatch[1].toUpperCase();
+        const rejectedLimit = limitMatch[2];
+
+        setLimitError(true);
+        setError(
+          `You've reached the ${rejectedLimit}-product limit on the ${rejectedPlan} plan. Upgrade your plan to add more products.`
+        );
+      } else {
+        setError(saveError.message);
+      }
+
       setSaving(false);
       return;
     }
@@ -171,10 +271,13 @@ export default function ProductsPage() {
       .order("product_name", { ascending: true });
 
     if (refreshError) {
-      setError(refreshError.message);
+      setError(
+        "Product was saved, but the inventory list could not refresh. Please reload the page."
+      );
     } else {
       setProducts((data || []) as Product[]);
       setMessage("Product saved successfully!");
+
       setForm({
         product_name: "",
         sku: "",
@@ -235,6 +338,7 @@ export default function ProductsPage() {
       fontFamily: "Arial, sans-serif"
     }}>
       <div style={{ maxWidth: "1050px", margin: "0 auto" }}>
+
         <header style={{
           background: "#164a32",
           color: "white",
@@ -271,6 +375,78 @@ export default function ProductsPage() {
               </option>
             ))}
           </select>
+        </section>
+
+        <section style={{
+          background: "white",
+          padding: "20px",
+          borderRadius: "12px",
+          marginBottom: "22px"
+        }}>
+          <h2 style={{ color: "#164a32", marginTop: 0 }}>
+            Subscription Usage
+          </h2>
+
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "12px"
+          }}>
+            <div>
+              <p style={{ color: "#718078", margin: 0 }}>
+                Current Plan
+              </p>
+              <strong style={{
+                color: "#164a32",
+                fontSize: "20px",
+                textTransform: "capitalize"
+              }}>
+                {plan}
+              </strong>
+            </div>
+
+            <div>
+              <p style={{ color: "#718078", margin: 0 }}>
+                Products Added
+              </p>
+              <strong style={{ color: "#164a32", fontSize: "20px" }}>
+                {productsLoading
+                  ? "Loading..."
+                  : `${products.length} / ${productLimit ?? "Unlimited"}`}
+              </strong>
+            </div>
+          </div>
+
+          {productLimit !== null && (
+            <div style={{
+              background: "#e8f1ea",
+              height: "9px",
+              borderRadius: "20px",
+              overflow: "hidden",
+              marginTop: "16px"
+            }}>
+              <div style={{
+                width: `${Math.min((products.length / productLimit) * 100, 100)}%`,
+                height: "100%",
+                background: isAtLimit ? "#b45309" : "#167044",
+                borderRadius: "20px"
+              }} />
+            </div>
+          )}
+
+          {isAtLimit && (
+            <p style={{ color: "#b45309", fontSize: "14px", marginBottom: 0 }}>
+              You have reached your product limit.{" "}
+              <Link
+                href="/subscription"
+                style={{ color: "#164a32", fontWeight: 700 }}
+              >
+                View upgrade plans
+              </Link>
+            </p>
+          )}
         </section>
 
         <div style={{
@@ -440,9 +616,36 @@ export default function ProductsPage() {
             </div>
 
             {error && (
-              <p style={{ color: "#b42318", fontSize: "14px" }}>
-                {error}
-              </p>
+              <div style={{
+                background: limitError ? "#fff7ed" : "#fef2f2",
+                border: `1px solid ${limitError ? "#fed7aa" : "#fecaca"}`,
+                borderRadius: "8px",
+                padding: "12px",
+                marginTop: "12px"
+              }}>
+                <p style={{
+                  color: limitError ? "#9a3412" : "#b42318",
+                  fontSize: "14px",
+                  margin: 0
+                }}>
+                  {error}
+                </p>
+
+                {limitError && (
+                  <Link
+                    href="/subscription"
+                    style={{
+                      display: "inline-block",
+                      marginTop: "9px",
+                      color: "#164a32",
+                      fontWeight: 700,
+                      fontSize: "14px"
+                    }}
+                  >
+                    View subscription plans →
+                  </Link>
+                )}
+              </div>
             )}
 
             {message && (
@@ -453,21 +656,34 @@ export default function ProductsPage() {
 
             <button
               type="submit"
-              disabled={saving || businesses.length === 0}
+              disabled={
+                saving ||
+                productsLoading ||
+                businesses.length === 0 ||
+                isAtLimit
+              }
               style={{
                 width: "100%",
                 padding: "14px",
-                background: "#164a32",
+                background: isAtLimit ? "#9ca3af" : "#164a32",
                 color: "white",
                 border: "none",
                 borderRadius: "9px",
                 fontSize: "15px",
                 fontWeight: 700,
-                cursor: "pointer",
+                cursor: (
+                  saving ||
+                  productsLoading ||
+                  isAtLimit
+                ) ? "not-allowed" : "pointer",
                 marginTop: "5px"
               }}
             >
-              {saving ? "Saving Product..." : "Save Product"}
+              {saving
+                ? "Saving Product..."
+                : isAtLimit
+                  ? "Product Limit Reached"
+                  : "Save Product"}
             </button>
           </form>
         </section>
@@ -481,7 +697,11 @@ export default function ProductsPage() {
             Product Inventory
           </h2>
 
-          {products.length === 0 ? (
+          {productsLoading ? (
+            <p style={{ color: "#718078" }}>
+              Loading products...
+            </p>
+          ) : products.length === 0 ? (
             <p style={{ color: "#718078" }}>
               No products added yet. Use the form above to add your first product.
             </p>

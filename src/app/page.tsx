@@ -124,6 +124,7 @@ const navigation = [
   { name: "Expenses", href: "/expenses", icon: Wallet },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Reports", href: "/reports", icon: Activity },
+  { name: "Subscription & Plans", href: "/subscription", icon: CreditCard },
 ];
 
 const quickActions = [
@@ -162,6 +163,12 @@ const quickActions = [
     description: "Review business performance",
     href: "/reports",
     icon: Activity,
+  },
+  {
+    name: "Subscription & Plans",
+    description: "View your plan, usage and upgrade options",
+    href: "/subscription",
+    icon: CreditCard,
   },
 ];
 
